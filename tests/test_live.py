@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from test_get import run
+from conftest import run
 
 
 @pytest.mark.live

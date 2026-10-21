@@ -12,7 +12,7 @@ from easyeda2kicad.easyeda.easyeda_importer import (
 )
 from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 
-from jlcpick.sources.http import fetch, fetch_json
+from jlcpick.sources.http import SourceError, fetch, fetch_json
 
 CAD_URL = "https://easyeda.com/api/products/{lcsc}/components?version=6.4.19.5"
 STEP_URL = "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{uuid}"
@@ -32,9 +32,15 @@ def cad(lcsc: str) -> RawCad | None:
     cad_path = CACHE / f"{lcsc}.json"
     if not cad_path.exists():
         response = fetch_json(CAD_URL.format(lcsc=lcsc))
-        if not response.get("success"):
-            return None
-        _write(cad_path, json.dumps(response).encode())
+        try:
+            if not response.get("success"):
+                if response.get("code") == 404:
+                    return None
+                raise SourceError(f"{lcsc}: EasyEDA answered {response.get('message')}")
+            body = json.dumps({"result": response["result"]})
+        except (KeyError, TypeError, AttributeError) as error:
+            raise SourceError(f"{lcsc}: EasyEDA answered in an unexpected format") from error
+        _write(cad_path, body.encode())
     data = json.loads(cad_path.read_bytes())["result"]
     model = Easyeda3dModelImporter(data, download_raw_3d_model=False).output
     if model is None:
@@ -59,4 +65,6 @@ def footprint(raw: RawCad, step_path: PurePath) -> str:
 
 def _write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    tmp = path.with_suffix(path.suffix + ".part")
+    tmp.write_bytes(data)
+    tmp.replace(path)

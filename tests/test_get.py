@@ -1,21 +1,16 @@
+import io
 import json
 from collections.abc import Callable
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import Request
 
 import pytest
+from conftest import recorded, run
 
 from jlcpick.cli import main
 
 pytestmark = pytest.mark.usefixtures("network")
-
-
-def run(*argv: str) -> None:
-    """Run the CLI and fail on a non-zero exit."""
-    try:
-        main(list(argv))
-    except SystemExit as exit_info:
-        if exit_info.code not in (None, 0):
-            raise
 
 
 def test_get_prints_a_basic_passive(capsys: pytest.CaptureFixture[str]) -> None:
@@ -98,3 +93,83 @@ def test_get_out_reuses_cached_cad_while_easyeda_blocks(network: Callable[..., N
     run("get", "C25744", "--out", "second")
 
     assert Path("second/C25744.step").read_bytes() == Path("first/C25744.step").read_bytes()
+
+
+def test_get_out_pauses_between_easyeda_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [100.0]
+    calls: list[tuple[str, float]] = []
+
+    def urlopen(request: Request, timeout: float) -> io.BytesIO:
+        calls.append((request.host, clock[0]))
+        return recorded(request, timeout)
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    monkeypatch.setattr("jlcpick.sources.http.PAUSE_S", 3.0)
+    monkeypatch.setattr("jlcpick.sources.http._last_request", {})
+    monkeypatch.setattr("jlcpick.sources.http.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("jlcpick.sources.http.time.sleep", sleep)
+    monkeypatch.setattr("jlcpick.sources.http.urlopen", urlopen)
+
+    run("get", "C25744", "--out", "lib")
+
+    [(_, cad_time)] = [call for call in calls if call[0] == "easyeda.com"]
+    [(_, step_time)] = [call for call in calls if call[0] == "modules.easyeda.com"]
+    assert step_time - cad_time >= 3.0
+
+
+def test_get_explains_when_the_network_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    def urlopen(request: Request, timeout: float) -> io.BytesIO:
+        raise URLError("no route")
+
+    monkeypatch.setattr("jlcpick.sources.http.urlopen", urlopen)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["get", "C25744"])
+
+    assert exit_info.value.code == "jlcpick: cannot reach jlcpcb.com: <urlopen error no route>"
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        ({"code": 500, "message": "busy"}, "JLCPCB search failed: busy"),
+        ({"code": 200, "data": {}}, "C25744: JLCPCB answered in an unexpected format"),
+    ],
+)
+def test_get_explains_a_bad_jlcpcb_answer(
+    monkeypatch: pytest.MonkeyPatch, answer: dict[str, object], message: str
+) -> None:
+    monkeypatch.setattr(
+        "jlcpick.sources.http.urlopen",
+        lambda request, timeout: io.BytesIO(json.dumps(answer).encode()),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["get", "C25744"])
+
+    assert exit_info.value.code == f"jlcpick: {message}"
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        ({"success": False, "code": 500, "message": "oops"}, "C25744: EasyEDA answered oops"),
+        ({"success": True}, "C25744: EasyEDA answered in an unexpected format"),
+    ],
+)
+def test_get_out_explains_a_bad_easyeda_answer(
+    monkeypatch: pytest.MonkeyPatch, answer: dict[str, object], message: str
+) -> None:
+    def urlopen(request: Request, timeout: float) -> io.BytesIO:
+        if request.host == "easyeda.com":
+            return io.BytesIO(json.dumps(answer).encode())
+        return recorded(request, timeout)
+
+    monkeypatch.setattr("jlcpick.sources.http.urlopen", urlopen)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["get", "C25744", "--out", "lib"])
+
+    assert exit_info.value.code == f"jlcpick: {message}"

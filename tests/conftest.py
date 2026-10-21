@@ -8,7 +8,18 @@ from urllib.request import Request
 
 import pytest
 
+from jlcpick.cli import main
+
 PARTS = Path(__file__).parent / "fixtures" / "parts"
+
+
+def run(*argv: str) -> None:
+    """Run the CLI and fail on a non-zero exit."""
+    try:
+        main(list(argv))
+    except SystemExit as exit_info:
+        if exit_info.code not in (None, 0):
+            raise
 
 
 def recorded(request: Request, timeout: float) -> io.BytesIO:
