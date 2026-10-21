@@ -18,3 +18,16 @@ C24253,CJA1117B-3.3,U3,extended,no_rule,LDO IC; no basic LCSC for the same MPN,n
 C25783,0402WGF3902TCE,R27,preferred,keep,39k 0402; extended in the order but preferred on 2026-10-21 (no Economic fee),no
 C5137554,FCC0402N180J500AT,"C22,C23",extended,C1549,"18pF 50V C0G 5% 0402 to 0402CG180J500NT 18pF 50V C0G 5% 0402, basic; every field equal (MicrasPCB jlc.toml already uses C1549)",no
 C2994645,HoLLR2512-3W-50mR-1%,R31,extended,to_check,50 mOhm shunt (below 1 Ohm),no
+C22371529,WS2815C-2020-4P,"D1,D2",extended,no_rule,addressable RGB LED; no rule,no
+C3293150,DSHP04TJGER,SW1,extended,no_rule,DIP switch,no
+C41347750,AFE201612S2R2MBT,L1,extended,no_rule,2.2uH power inductor; inductors have no rule,no
+C1537,0402B471K500NT,C42,preferred,keep,470pF 0402; preferred on 2026-10-21,no
+C22795,0603WAF1303T5E,R40,preferred,keep,130k 0603; preferred on 2026-10-21,no
+C25130,0402WGF6800TCE,"R4,R5",preferred,keep,680 ohm 0402; preferred on 2026-10-21,no
+C25755,0402WGF1503TCE,R36,preferred,keep,150k 0402; preferred on 2026-10-21,no
+C25769,0402WGF2402TCE,R28,preferred,keep,24k 0402; preferred on 2026-10-21,no
+C25796,0402WGF5602TCE,R37,preferred,keep,56k 0402; preferred on 2026-10-21,no
+C25798,0402WGF7502TCE,R29,preferred,keep,75k 0402; preferred on 2026-10-21,no
+C36871,0402WGF6802TCE,R38,preferred,keep,68k 0402; preferred on 2026-10-21,no
+C7420318,1N4148W,"D3,D6,D7",preferred,keep,switching diode SOD-123; preferred on 2026-10-21,no
+C89811,NCD0603Y2,D4,preferred,keep,yellow LED 0603; preferred on 2026-10-21,no
