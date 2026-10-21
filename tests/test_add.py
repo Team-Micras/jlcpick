@@ -607,3 +607,29 @@ def test_add_ignores_a_kicad_of_another_version(
         f"jlcpick: KiCad 10's symbols not found (the KiCad found, {old}, is another version); "
         "install KiCad 10 or set KICAD10_SYMBOL_DIR"
     )
+
+
+def test_add_copies_the_root_of_a_symbol_that_extends_one_that_extends_another() -> None:
+    run("add", "C9999998")
+
+    symbols = library.symbols(LIBRARY.read_text())
+    name = "Diodes - General Purpose DO-41 - 1N4937"
+    assert list(symbols) == ["1N4001", name]
+    assert '\n\t\t(extends "1N4001")\n' in symbols[name]
+    assert library.pins(symbols["1N4001"]) != []
+
+
+def test_add_checks_the_pads_against_the_root_of_a_symbol_with_two_parents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KICAD10_FOOTPRINT_DIR", str(Path("footprints")))
+    footprint = Path("footprints/Diode_THT.pretty/D_DO-41_SOD81_P10.16mm_Horizontal.kicad_mod")
+    footprint.parent.mkdir(parents=True)
+    pristine = (KICAD / "footprints" / "Diode_THT.pretty" / footprint.name).read_text()
+    footprint.write_text(re.sub(r"\(pad \"?2\"?", '(pad "9"', pristine))
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["add", "C9999998"])
+
+    assert str(exit_info.value.code).startswith("jlcpick: Diode_THT:D_DO-41")
+    assert "no pad for pin 2" in str(exit_info.value.code)

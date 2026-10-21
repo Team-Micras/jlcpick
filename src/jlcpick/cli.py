@@ -273,7 +273,9 @@ def _entry(
         return _converted(part, lib, name)
     nickname, _, symbol = stock.symbol.partition(":")
     source = kicad[nickname][symbol]
-    base = kicad[nickname][library.parent(source) or symbol]
+    base = source
+    while parent := library.parent(base):
+        base = kicad[nickname][parent]
     footprint_nickname, _, footprint = stock.footprint.partition(":")
     pads = _text(footprint_dir / f"{footprint_nickname}.pretty" / f"{footprint}.kicad_mod")
     if pins := library.missing_pads(base, pads):
