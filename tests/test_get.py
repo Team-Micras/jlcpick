@@ -1,6 +1,7 @@
 import io
 import json
 from collections.abc import Callable
+from dataclasses import fields
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request
@@ -9,6 +10,7 @@ import pytest
 from conftest import recorded, run
 
 from jlcpick.cli import main
+from jlcpick.sources.jlc import Part
 
 pytestmark = pytest.mark.usefixtures("network")
 
@@ -173,3 +175,8 @@ def test_get_out_explains_a_bad_easyeda_answer(
         main(["get", "C25744", "--out", "lib"])
 
     assert exit_info.value.code == f"jlcpick: {message}"
+
+
+def test_skill_documents_every_part_field():
+    skill = (Path(__file__).parents[1] / "skills/jlcpick/SKILL.md").read_text()
+    assert [f.name for f in fields(Part) if f"`{f.name}`" not in skill] == []

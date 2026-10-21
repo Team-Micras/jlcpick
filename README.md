@@ -20,6 +20,11 @@ cached in `.jlcpick/cache/`; prices, stock and tier are always fetched live. Eas
 client for about 10 minutes after ~25 requests a minute, so jlcpick waits 3 s between requests to
 the same site.
 
+## For agents
+
+[skills/jlcpick/SKILL.md](skills/jlcpick/SKILL.md) teaches an agent to use jlcpick; copy it
+into your agent's skills folder. [AGENTS.md](AGENTS.md) is for agents working on this repo.
+
 ## Credits
 
 Footprint and 3D conversion by [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py)
