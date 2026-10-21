@@ -722,3 +722,22 @@ def test_add_goes_on_without_3d_when_the_step_cannot_be_read(
     assert USB_C in library.symbols(LIBRARY.read_text())
     assert "(model " not in Path(f"lib/board.pretty/{USB_C_FOOTPRINT}.kicad_mod").read_text()
     assert not Path("lib/board.3dshapes").exists()
+
+
+@pytest.mark.parametrize(
+    ("text", "safe"),
+    [("a*b?c|d", "a_b_c_d"), ("USB 3.0 ", "USB 3.0_"), ("cap. ..", "cap____")],
+)
+def test_safe_name_replaces_what_windows_refuses(text: str, safe: str) -> None:
+    assert library.safe_name(text) == safe
+
+
+def test_add_names_packages_toml_only_when_it_is_the_table_that_is_wrong(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(library, "missing_pads", lambda symbol, footprint: ["2"])
+
+    for code, fix in [("C20917", False), ("C25744", True)]:
+        with pytest.raises(SystemExit) as exit_info:
+            main(["add", code])
+        assert str(exit_info.value.code).endswith("; fix packages.toml") is fix

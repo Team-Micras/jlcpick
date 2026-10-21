@@ -5,7 +5,7 @@ import tomllib
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from importlib.resources import files
-from pathlib import PurePath
+from pathlib import Path
 from typing import Literal, NotRequired, TypedDict
 
 from jlcpick.sources.jlc import Part
@@ -40,7 +40,7 @@ _TABLE_LIB = re.compile(
     rf"\(lib\s+\(name ({_STRING})\)(?:\s*\((?!uri)\w+ {_STRING}\))*\s*\(uri ({_STRING})\)"
 )
 _PIN = re.compile(rf"\(name ({_STRING})|\(number ({_STRING})")
-_NOT_IN_NAMES = re.compile(r'[\x00-\x1f:/\\<>"]')
+_NOT_IN_NAMES = re.compile(r'[\x00-\x1f:/\\<>"*?|]|[ .](?=[ .]*$)')
 _PAREN = re.compile(r"\s*\([^)]*\)")
 
 
@@ -78,7 +78,7 @@ class Entry:
 
     symbol: str
     base: str | None
-    files: Mapping[PurePath, bytes] = field(default_factory=dict)
+    files: Mapping[Path, bytes] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -130,7 +130,7 @@ def entry(part: Part, stock: Stock, base: str, source: str) -> Entry:
     return Entry("\n\t\t".join([*lines, "(embedded_fonts no)"]) + "\n\t)", base)
 
 
-def converted(part: Part, symbol: str, footprint: str, files: Mapping[PurePath, bytes]) -> Entry:
+def converted(part: Part, symbol: str, footprint: str, files: Mapping[Path, bytes]) -> Entry:
     """The symbol of ``part`` from ``symbol``, converted from EasyEDA, renamed and with the
     part's fields, its footprint ``footprint`` and its ``files``."""
     name = _symbol_name(_kind(part), part)

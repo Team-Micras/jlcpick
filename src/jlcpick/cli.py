@@ -195,8 +195,8 @@ def _add(codes: list[str], lib: Path, force: bool, as_json: bool) -> None:
         for note in notes:
             print(f"jlcpick: {part.lcsc}: {note}", file=sys.stderr)
     for file, data in writes.items():
-        Path(file).parent.mkdir(parents=True, exist_ok=True)
-        Path(file).write_bytes(data)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(data)
     _write_if_changed(path, old, library.merge_symbols(old, changed, list(bases)))
     _register(Path("sym-lib-table"), library.EMPTY_TABLE, name, path)
     if any(outcome.draft for outcome in outcomes):
@@ -271,7 +271,8 @@ def _check_base(path: Path, present: dict[str, str], entry: library.Entry) -> No
 def _entry(
     part: jlc.Part, kicad: dict[str, dict[str, str]], footprint_dir: Path, lib: Path, name: str
 ) -> library.Entry:
-    stock = library.stock(part) or library.by_mpn(part, kicad)
+    table = library.stock(part)
+    stock = table or library.by_mpn(part, kicad)
     if stock is None:
         return _converted(part, lib, name)
     nickname, _, symbol = stock.symbol.partition(":")
@@ -283,8 +284,8 @@ def _entry(
     pads = _text(footprint_dir / f"{footprint_nickname}.pretty" / f"{footprint}.kicad_mod")
     if pins := library.missing_pads(base, pads):
         sys.exit(
-            f"jlcpick: {stock.footprint} has no pad for pin {', '.join(pins)} of {stock.symbol}; "
-            "fix packages.toml"
+            f"jlcpick: {stock.footprint} has no pad for pin {', '.join(pins)} of {stock.symbol}"
+            + ("; fix packages.toml" if table else "")
         )
     return library.entry(part, stock, base, source)
 
@@ -313,9 +314,7 @@ def _converted(part: jlc.Part, lib: Path, name: str) -> library.Entry:
             f"jlcpick: {part.lcsc}: EasyEDA's footprint has no pad for pin {', '.join(pins)} of "
             "its symbol; nothing written"
         )
-    files: dict[PurePath, bytes] = {
-        lib / f"{name}.pretty" / f"{footprint}.kicad_mod": text.encode()
-    }
+    files: dict[Path, bytes] = {lib / f"{name}.pretty" / f"{footprint}.kicad_mod": text.encode()}
     if raw.step is not None:
         files[step] = raw.step
     return library.converted(part, symbol, f"{name}:{footprint}", files)
@@ -350,7 +349,7 @@ def _status(
     entry: library.Entry,
     force: bool,
     users: list[str],
-) -> tuple[library.Status, list[str], dict[PurePath, bytes]]:
+) -> tuple[library.Status, list[str], dict[Path, bytes]]:
     old = {file: _read(file) for file in entry.files}
     stale = [file for file, data in old.items() if data not in (None, entry.files[file])]
     if stale and force and users:
@@ -402,8 +401,8 @@ def _refuse_clashes(parts: list[jlc.Part], entries: list[library.Entry]) -> None
                 )
 
 
-def _read(path: PurePath) -> bytes | None:
-    return Path(path).read_bytes() if Path(path).exists() else None
+def _read(path: Path) -> bytes | None:
+    return path.read_bytes() if path.exists() else None
 
 
 def _write_if_changed(path: Path, old: str, new: str) -> None:

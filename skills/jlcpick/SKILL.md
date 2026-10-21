@@ -117,6 +117,7 @@ Errors (exit 1, nothing written):
   damaged; restore it from git.
 - `CODE: EasyEDA's footprint has no pad for pin N of its symbol`: EasyEDA's data is wrong.
 - `<footprint> has no pad for pin N of <symbol>; fix packages.toml`: a bug in jlcpick's tables.
+  Without `; fix packages.toml`, it is KiCad's own symbol for the MPN that lacks the pad.
 
 ## Price a BOM
 
