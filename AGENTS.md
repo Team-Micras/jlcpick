@@ -9,6 +9,9 @@ uv run ruff check && uv run ruff format --check && uv run ty check && uv run pyt
 ```
 
 `uv run pytest -m live` hits the real sites; run it rarely (see the rate limit below).
+`JLCPICK_MAINBOARD=<folder with MicrasMainBoard.kicad_pcb and its sheets> uv run pytest -m kicad`
+runs the real KiKit; it needs `jlcpick[fab]` in a Python that imports `pcbnew`, such as the
+`kicad/kicad:10.0.7` image (README).
 
 ## Rules
 

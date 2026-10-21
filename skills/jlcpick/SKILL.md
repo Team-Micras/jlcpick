@@ -1,6 +1,6 @@
 ---
 name: jlcpick
-description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, add parts to a KiCad project's library (KiCad's own symbols and footprints when they fit, otherwise a draft converted from EasyEDA), and price a KiCad BOM for JLCPCB assembly with safe basic swaps, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), putting a part with its MPN and LCSC code into a KiCad project, or estimating what assembling a board costs and which parts make it expensive.
+description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, add parts to a KiCad project's library (KiCad's own symbols and footprints when they fit, otherwise a draft converted from EasyEDA), price a KiCad BOM for JLCPCB assembly with safe basic swaps, and write JLCPCB's Gerbers, BOM and CPL, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), putting a part with its MPN and LCSC code into a KiCad project, estimating what assembling a board costs and which parts make it expensive, or preparing the files of a JLCPCB order.
 ---
 
 # jlcpick
@@ -211,14 +211,42 @@ To make a board cheaper, apply the lines whose `swap.verdict` is `swap`; then lo
 `to_check` ones and the lines with `feeder_fee: true` and at `charged` well above `need` (a
 minimum order): a basic part with the same specs removes both.
 
+## Fabrication files
+
+```sh
+jlcpick fab board.kicad_pcb --exclude U1 --out jlcpcb
+```
+
+Writes what JLCPCB's order page asks for: `jlcpcb/gerbers.zip`, `jlcpcb/bom.csv` and
+`jlcpcb/pos.csv` (the CPL), by running KiKit's `kikit fab jlcpcb`. It needs the board's
+`.kicad_sch` next to it, with the LCSC code in a symbol field named like a BOM's LCSC column
+(`LCSC`, `LCSC Part #`, `SUPPLIER PART`…). DNP parts, parts without a code (a warning lists them)
+and `--exclude` designators stay out of both the BOM and the CPL, as in `bom`. KiKit's DRC is
+skipped: run it in KiCad.
+
+Rotations: footprints from KiCad's own libraries get the corrections of
+[JLCKicadTools](https://github.com/matthewlai/JLCKicadTools) (`src/jlcpick/rotations.csv`); the
+project's footprints, drawn by the team or converted from EasyEDA, are already in JLC's
+orientation and get none. Positions are the footprint's origin.
+
+`fab` needs KiKit and KiCad's Python (`pcbnew`): install `jlcpick[fab]` in a Python that imports
+`pcbnew` (a venv made with `--system-site-packages` from KiCad's Python), or run it in Docker as
+the README shows. Without them `fab` says so and exits 1; the other commands do not need them.
+
+Problems (stderr, exit 3, after the files are written):
+
+- `no checked rotation for KiCad's footprint, check it in JLC's preview: D1 (LED_SMD:…)`: the
+  table has no row for that stock footprint; check the part in JLC's preview before ordering.
+- `in the CPL but not the BOM: …` or `in the BOM but not the CPL: …`: KiKit's files disagree.
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | ok, possibly with warnings on stderr |
-| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
+| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `fab`, no schematic next to the board, no LCSC field in it, or KiKit missing or failing; for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
 | 2 | invalid usage, e.g. a code that is not `C` + digits |
-| 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first |
+| 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first. `fab`: a stock footprint without a checked rotation, or a CPL and BOM that list different designators; the files are written first |
 
 ## Limits
 

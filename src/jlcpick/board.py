@@ -1,4 +1,4 @@
-"""Footprints of a ``.kicad_pcb``: solder joints, side and through-hole, by designator."""
+"""Footprints of a ``.kicad_pcb``: name, solder joints, side and through-hole, by designator."""
 
 import re
 from dataclasses import dataclass
@@ -14,8 +14,10 @@ type Sexpr = list[str | Sexpr]
 
 @dataclass(frozen=True)
 class Footprint:
-    """A placed footprint: ``joints`` counts its distinct soldered pad numbers."""
+    """A placed footprint: ``name`` is its ``Library:Footprint``, ``joints`` counts its distinct
+    soldered pad numbers."""
 
+    name: str
     joints: int
     side: Literal["top", "bottom"]
     tht: bool
@@ -40,6 +42,7 @@ def footprints(pcb: str) -> dict[str, Footprint]:
         attributes = next((c[1:] for c in children if c[0] == "attr"), [])
         layer = next((c[1] for c in children if c[0] == "layer"), "F.Cu")
         found[reference] = Footprint(
+            name=node[1] if isinstance(node[1], str) else "",
             joints=len({pad[1] for pad in pads if pad[1]}),
             side="bottom" if layer == "B.Cu" else "top",
             tht="through_hole" in attributes

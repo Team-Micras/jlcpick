@@ -13,6 +13,9 @@ dependencies = [
     "easyeda2kicad==1.0.1",
 ]
 
+[project.optional-dependencies]
+fab = ["kikit==1.8.1"]
+
 [project.scripts]
 jlcpick = "jlcpick.cli:main"
 
@@ -37,5 +40,8 @@ allowed-confusables = ["×"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-m", "not live", "--strict-markers"]
-markers = ["live: hits the real JLCPCB and EasyEDA endpoints"]
+addopts = ["-m", "not live and not kicad", "--strict-markers"]
+markers = [
+    "live: hits the real JLCPCB and EasyEDA endpoints",
+    "kicad: runs KiKit, so needs jlcpick[fab] in a Python that imports KiCad's pcbnew",
+]

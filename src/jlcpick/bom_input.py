@@ -16,7 +16,7 @@ import csv
 import re
 from dataclasses import dataclass, replace
 
-_COLUMNS = {
+COLUMNS = {
     "lcsc": ("lcsc", "lcsc part", "lcsc part #", "lcsc part number", "jlcpcb part #",
              "supplier part"),
     "designators": ("refs", "reference", "designator", "designators"),
@@ -52,10 +52,10 @@ def read(text: str) -> list[BomLine]:
     header = [cell.strip().lower() for cell in rows[0]] if rows else []
     columns = {
         key: next((header.index(name) for name in names if name in header), None)
-        for key, names in _COLUMNS.items()
+        for key, names in COLUMNS.items()
     }
     if columns["lcsc"] is None:
-        raise BomError(f"the BOM has no LCSC column; name one of: {', '.join(_COLUMNS['lcsc'])}")
+        raise BomError(f"the BOM has no LCSC column; name one of: {', '.join(COLUMNS['lcsc'])}")
     if columns["designators"] is None:
         raise BomError("the BOM has no designator column, such as Refs or Designator")
 
