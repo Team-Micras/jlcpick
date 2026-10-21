@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from jlcpick.bom_input import BomError
+
 _TOKEN = re.compile(r'\(|\)|"(?:[^"\\]|\\.)*"|[^\s()"]+')
 _SOLDERED = ("smd", "thru_hole")
 
@@ -60,4 +62,4 @@ def _parse(pcb: str) -> Sexpr:
     match stack:
         case [[["kicad_pcb", *board]]]:
             return board
-    raise ValueError("not a KiCad board file")
+    raise BomError("not a KiCad board file")

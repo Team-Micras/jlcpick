@@ -7,13 +7,18 @@ from jlcpick.sources.jlc import Part, PriceBreak
 
 
 def part(
-    lcsc: str, tier: str = "basic", preferred: bool = False, min_qty: int = 0, loss_qty: int = 0
+    lcsc: str,
+    tier: str = "basic",
+    preferred: bool = False,
+    min_qty: int = 0,
+    loss_qty: int = 0,
+    package: str = "",
 ) -> Part:
     return Part(
         lcsc=lcsc,
         mpn="",
         manufacturer="",
-        package="",
+        package=package,
         category="",
         tier="basic" if tier == "basic" else "extended",
         preferred=preferred,
@@ -26,8 +31,12 @@ def part(
     )
 
 
-def smt(lcsc: str, tier: str = "extended", joints: int = 1, preferred: bool = False):
-    return pricing.Placement(part(lcsc, tier, preferred), tht=False, joints=joints)
+def smt(
+    lcsc: str, tier: str = "extended", joints: int = 1, preferred: bool = False, package: str = ""
+):
+    return pricing.Placement(
+        part(lcsc, tier, preferred, package=package), units=1, tht=False, joints=joints
+    )
 
 
 def test_an_extended_smt_part_pays_its_fee_once_and_the_price_at_its_break() -> None:
@@ -47,7 +56,7 @@ def test_an_extended_smt_part_pays_its_fee_once_and_the_price_at_its_break() -> 
 
 
 def test_a_tht_part_pays_hand_soldering_and_no_feeder_or_stencil() -> None:
-    tht = pricing.Placement(part("C777", "extended"), tht=True, joints=10)
+    tht = pricing.Placement(part("C777", "extended"), units=1, tht=True, joints=10)
 
     fees = pricing.fees("economic", [tht], sides=1)
 
@@ -101,3 +110,34 @@ def test_charged_adds_attrition_and_the_minimum_except_for_basic(
 @pytest.mark.parametrize(("qty", "usd"), [(1, 0.30), (9, 0.30), (10, 0.20), (500, 0.20)])
 def test_unit_price_is_the_break_the_quantity_reaches(qty: int, usd: float) -> None:
     assert pricing.unit_usd(part("C1"), qty) == usd
+
+
+@pytest.mark.parametrize(
+    ("package", "leadless"),
+    [
+        ("QFN-32(5x5)", True),
+        ("VFQFPN-68(8x8)", True),
+        ("LGA-14(2.5x3)", True),
+        ("TFBGA-100", True),
+        ("DFN-8", True),
+        ("WLCSP-25", True),
+        ("LQFP-48(7x7)", False),
+        ("SO-8", False),
+    ],
+)
+def test_xray_is_charged_per_unit_of_leadless_packages(package: str, leadless: bool) -> None:
+    placement = pricing.Placement(part("C1", package=package), units=10, tht=False, joints=10)
+
+    fees = pricing.fees("economic", [placement], sides=1)
+
+    assert (fees.xray_units, fees.xray_usd) == ((10, 16.4) if leadless else (0, 0.0))
+
+
+@pytest.mark.parametrize("assembly", ["economic", "standard"])
+def test_xray_rate_follows_the_total_count_and_skips_tht(assembly: pricing.Assembly) -> None:
+    bga = pricing.Placement(part("C1", package="BGA-64"), units=11, tht=False, joints=11)
+    tht = pricing.Placement(part("C2", package="QFN-8"), units=5, tht=True, joints=5)
+
+    fees = pricing.fees(assembly, [bga, tht], sides=1)
+
+    assert (fees.xray_units, fees.xray_each_usd, fees.xray_usd) == (11, 0.82, 9.02)

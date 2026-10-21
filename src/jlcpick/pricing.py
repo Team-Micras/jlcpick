@@ -3,6 +3,7 @@
 Every fee comes from the page at `FEES_SOURCE` as it read on `FEES_AS_OF`; change them together.
 """
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -41,6 +42,10 @@ SCHEDULES: dict[Assembly, Schedule] = {
 }
 MANUAL_JOINT: Bands = ((1, 0.0164), (10_001, 0.015), (30_001, 0.012))
 MANUAL_LABOR = 3.58
+XRAY: Bands = (
+    (1, 1.64), (11, 0.82), (51, 0.49), (201, 0.33), (501, 0.25), (1_001, 0.16), (3_001, 0.082)
+)  # fmt: skip
+LEADLESS = re.compile(r"BGA|QFN|DFN|LGA|WLCSP|FQFPN", re.IGNORECASE)
 STANDARD_MIN_GAP = 14.93
 
 
@@ -48,10 +53,12 @@ STANDARD_MIN_GAP = 14.93
 class Placement:
     """A distinct part of the order; ``joints`` covers every board.
 
-    ``tht`` and ``joints`` are None without a board file, and the part is priced as SMT.
+    ``units`` is the parts placed on every board. ``tht`` and ``joints`` are None without a board
+    file, and the part is priced as SMT.
     """
 
     part: Part
+    units: int
     tht: bool | None
     joints: int | None
 
@@ -69,6 +76,9 @@ class Fees:
     smt_joints_usd: float
     manual_joints: int | None
     manual_usd: float
+    xray_units: int
+    xray_each_usd: float
+    xray_usd: float
     handling_usd: float
     total_usd: float
 
@@ -88,7 +98,8 @@ def fees(assembly: Assembly, placements: Sequence[Placement], sides: int) -> Fee
 
     Hand-soldered (THT) parts use no feeder. Economic charges the feeder fee only for extended
     parts that are not preferred; Standard charges it for every SMT part, and charges the
-    shortfall when it costs less than `STANDARD_MIN_GAP` over Economic.
+    shortfall when it costs less than `STANDARD_MIN_GAP` over Economic. Every SMT unit whose
+    package is leadless (`LEADLESS`) pays X-ray inspection, at the rate of the total count.
     """
     schedule = SCHEDULES[assembly]
     smt = [p for p in placements if not p.tht]
@@ -101,6 +112,7 @@ def fees(assembly: Assembly, placements: Sequence[Placement], sides: int) -> Fee
     )
     smt_joints = _joints(smt)
     manual_joints = _joints(manual)
+    xray_units = sum(p.units for p in smt if LEADLESS.search(p.part.package))
     usd = {
         "setup_usd": schedule.setup * sides_billed if placements else 0.0,
         "stencil_usd": schedule.stencil * sides_billed if smt else 0.0,
@@ -108,6 +120,7 @@ def fees(assembly: Assembly, placements: Sequence[Placement], sides: int) -> Fee
         "smt_joints_usd": (smt_joints or 0) * _rate(schedule.smt_joint, smt_joints or 0),
         "manual_usd": (manual_joints or 0) * _rate(MANUAL_JOINT, manual_joints or 0)
         + (MANUAL_LABOR if manual else 0.0),
+        "xray_usd": xray_units * _rate(XRAY, xray_units),
     }
     rounded = {name: round(value, 2) for name, value in usd.items()}
     handling = 0.0
@@ -120,6 +133,8 @@ def fees(assembly: Assembly, placements: Sequence[Placement], sides: int) -> Fee
         feeder_each_usd=schedule.feeder,
         smt_joints=smt_joints,
         manual_joints=manual_joints,
+        xray_units=xray_units,
+        xray_each_usd=_rate(XRAY, xray_units),
         handling_usd=handling,
         total_usd=round(sum(rounded.values()) + handling, 2),
     )

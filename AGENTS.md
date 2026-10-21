@@ -12,8 +12,8 @@ uv run ruff check && uv run ruff format --check && uv run ty check && uv run pyt
 
 ## Rules
 
-- Only `src/jlcpick/sources/` touches the network. Everything else is pure; `cli.py` coordinates
-  and is the only place that writes files.
+- Only `src/jlcpick/sources/` touches the network. Everything else is pure; `cli.py` coordinates;
+  only `cli.py` and the EasyEDA cache in `sources/` write files.
 - Tests go through the CLI with recorded fixtures in `tests/fixtures/`. To record new ones, fetch
   part by part with a pause: EasyEDA blocks for ~10 minutes after ~25 requests a minute.
 - No comments inside function bodies; docstrings on public functions.

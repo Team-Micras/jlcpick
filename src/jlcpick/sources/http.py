@@ -11,7 +11,8 @@ from urllib.request import Request, urlopen
 from jlcpick import __version__
 
 USER_AGENT = f"jlcpick/{__version__} (+https://github.com/Team-Micras/jlcpick)"
-PAUSE_S = 3.0
+PAUSE_S = {"easyeda.com": 3.0}
+DEFAULT_PAUSE_S = 2.0
 _last_request: dict[str, float] = {}
 
 
@@ -19,13 +20,18 @@ class SourceError(Exception):
     """A remote source failed or does not know the requested part."""
 
 
+def pause(site: str) -> float:
+    """Seconds to wait between requests to ``site``: EasyEDA blocks faster clients."""
+    return PAUSE_S.get(site, DEFAULT_PAUSE_S)
+
+
 def fetch(url: str, body: dict[str, Any] | None = None) -> bytes:
-    """GET ``url``, or POST ``body`` as JSON, at most once every ``PAUSE_S`` per site."""
+    """GET ``url``, or POST ``body`` as JSON, at most once per `pause` of its site."""
     host = urlsplit(url).netloc
     site = ".".join(host.split(".")[-2:])
     elapsed = time.monotonic() - _last_request.get(site, -math.inf)
-    if elapsed < PAUSE_S:
-        time.sleep(PAUSE_S - elapsed)
+    if elapsed < pause(site):
+        time.sleep(pause(site) - elapsed)
     data = None if body is None else json.dumps(body).encode()
     headers = {"User-Agent": USER_AGENT, "Content-Type": "application/json"}
     try:

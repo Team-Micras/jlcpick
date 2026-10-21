@@ -59,6 +59,8 @@ def part(lcsc: str) -> Part:
 
 def _part(item: dict[str, Any]) -> Part:
     prices = sorted(item["componentPrices"], key=lambda price: price["startNumber"])
+    if not prices:
+        raise SourceError(f"{item['componentCode']}: no price")
     return Part(
         lcsc=item["componentCode"],
         mpn=item["componentModelEn"],

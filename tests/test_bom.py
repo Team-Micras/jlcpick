@@ -97,7 +97,7 @@ def test_bom_exclude_drops_a_unique_extended_part_and_its_fee(
     assert len(full["fees"]["feeder_parts"]) - len(without_mcu["fees"]["feeder_parts"]) == 1
     assert full["fees"]["smt_joints"] - without_mcu["fees"]["smt_joints"] == 69 * 5
     assert full["total_usd"] - without_mcu["total_usd"] == pytest.approx(
-        mcu["total_usd"] + 3.07 + round(69 * 5 * 0.0016, 2), abs=0.011
+        mcu["total_usd"] + 3.07 + round(69 * 5 * 0.0016, 2) + 5 * 0.82, abs=0.011
     )
 
 
@@ -116,6 +116,14 @@ def test_bom_leaves_out_dnp_lines(capsys: pytest.CaptureFixture[str]) -> None:
     report = bom_json(capsys, "bom", path, "--qty", "1")
 
     assert [(line["lcsc"], line["need"]) for line in report["lines"]] == [("C25744", 2)]
+
+
+def test_bom_keeps_a_line_whose_dnp_cell_says_no(capsys: pytest.CaptureFixture[str]) -> None:
+    path = csv('"Refs","Qty","DNP","LCSC"\n"R1","1","No","C25744"\n"R2","1","Yes","C25796"\n')
+
+    report = bom_json(capsys, "bom", path, "--qty", "1")
+
+    assert [line["lcsc"] for line in report["lines"]] == ["C25744"]
 
 
 def test_bom_reads_an_altium_bom_with_a_supplier_part_column(
@@ -146,12 +154,30 @@ def test_bom_reads_a_list_of_codes_as_one_use_per_row(
         ("Value,LCSC\n10k,C25744\n", "the BOM has no designator column, such as Refs"),
         ("Refs,LCSC\nR1,25744\n", "row 2: '25744' is not an LCSC code like C25744"),
         ("C25744\nC999999999\n", "C999999999: JLCPCB has no part with this code"),
+        ("Refs,Qty,LCSC\nC5-C8,4,C25744\n", "row 2: Qty 4 but 1 designators; ranges like C5-C8"),
     ],
 )
 def test_bom_exits_1_on_a_bad_bom(text: str, message: str) -> None:
     code = exit_code("bom", csv(text))
 
     assert str(code).startswith(f"jlcpick: {message}")
+
+
+def test_bom_exits_1_on_a_part_without_a_price(monkeypatch: pytest.MonkeyPatch) -> None:
+    answer = json.loads((FIXTURES / "parts/C25744_jlc.json").read_text())
+    for item in answer["data"]["componentPageInfo"]["list"]:
+        item["componentPrices"] = []
+    monkeypatch.setattr("jlcpick.sources.jlc.fetch_json", lambda url, body=None: answer)
+
+    assert exit_code("bom", csv("C25744\n")) == "jlcpick: C25744: no price"
+
+
+def test_bom_exclude_accumulates_when_repeated(capsys: pytest.CaptureFixture[str]) -> None:
+    path = csv("Refs,LCSC\nR1,C25744\nR2,C25796\nR3,C25783\n")
+
+    report = bom_json(capsys, "bom", path, "--exclude", "R1", "--exclude", "R2")
+
+    assert [line["lcsc"] for line in report["lines"]] == ["C25783"]
 
 
 def test_bom_exits_1_on_an_unknown_excluded_designator() -> None:
@@ -174,16 +200,41 @@ def test_bom_exits_2_on_invalid_usage(argv: list[str]) -> None:
 def test_bom_fail_on_extended_exits_3_after_the_report(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    code = exit_code("bom", csv("C25744\nC8734\n"), "--fail-on-extended")
+    code = exit_code("bom", csv("C25744\nC27345609\n"), "--fail-on-extended")
 
     captured = capsys.readouterr()
     assert code == 3
     assert captured.out.startswith("bom  ×5  Economic")
-    assert captured.err.endswith("jlcpick: not basic: C8734\n")
+    assert captured.err.endswith("jlcpick: extended parts paying the feeder fee: C27345609\n")
 
 
-def test_bom_fail_on_extended_passes_an_all_basic_bom() -> None:
-    run("bom", csv("C25744\n"), "--fail-on-extended")
+def test_bom_fail_on_extended_passes_basic_and_preferred_parts_in_economic() -> None:
+    run("bom", csv("C25744\nC7420318\n"), "--fail-on-extended")
+
+
+def test_bom_fail_on_extended_fails_on_a_preferred_part_in_standard(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = csv("C25744\nC7420318\n")
+
+    code = exit_code("bom", path, "--assembly", "standard", "--fail-on-extended")
+
+    assert code == 3
+    assert capsys.readouterr().err.endswith("paying the feeder fee: C7420318\n")
+
+
+def test_bom_standard_lists_the_fees_it_does_not_include(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run("bom", csv("C25744\n"), "--assembly", "standard")
+
+    assert "  not included: packing, fixture and the per-board batch fee" in capsys.readouterr().out
+
+
+def test_bom_x_ray_charges_leadless_packages(capsys: pytest.CaptureFixture[str]) -> None:
+    report = bom_json(capsys, "bom", csv("Refs,LCSC\nIC1,C5271073\nC1,C25744\n"), "--qty", "5")
+
+    assert (report["fees"]["xray_units"], report["fees"]["xray_usd"]) == (5, 8.2)
 
 
 def test_bom_standard_on_a_board_with_a_bottom_part_pays_two_sides(
@@ -237,11 +288,11 @@ def test_bom_charges_order_10973279a_like_jlc(
     code: str, designators: str, qty: int, usd: float, network: Callable[..., None]
 ) -> None:
     part = replace(jlc.part(code), prices=(jlc.PriceBreak(1, usd / qty),))
-    line = BomLine(tuple(designators.split(",")), code, "", "", False)
+    line = BomLine(tuple(designators.split(",")), code, False)
 
     [priced] = bom.report("10973279A", [line], {code: part}, 2, "economic", None).lines
 
-    assert (priced.charged, priced.total_usd) == (qty, usd)
+    assert priced.charged == qty
 
 
 def test_skill_documents_every_bom_report_field() -> None:

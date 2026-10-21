@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from jlcpick import __version__, board, bom, bom_input
+from jlcpick.bom_input import BomError
 from jlcpick.sources import easyeda, http, jlc
 from jlcpick.sources.http import SourceError
 
@@ -27,9 +28,13 @@ def main(argv: list[str] | None = None) -> None:
     cost.add_argument("--pcb", type=Path, help="the .kicad_pcb, for joints, sides and THT")
     cost.add_argument("--qty", type=_positive, default=5, help="boards to assemble (5)")
     cost.add_argument("--assembly", choices=["economic", "standard"], default="economic")
-    cost.add_argument("--exclude", type=_designators, default=set(), metavar="U1,U3")
+    cost.add_argument("--exclude", type=_designators, action="extend", default=[], metavar="U1,U3")
     cost.add_argument("--json", action="store_true", help="print JSON")
-    cost.add_argument("--fail-on-extended", action="store_true", help="exit 3 on a non-basic part")
+    cost.add_argument(
+        "--fail-on-extended",
+        action="store_true",
+        help="exit 3 when an extended part pays the feeder fee",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.ERROR, format="jlcpick: %(message)s")
     try:
@@ -37,7 +42,7 @@ def main(argv: list[str] | None = None) -> None:
             _get(args.codes, args.json, args.out)
         else:
             _bom(args)
-    except (SourceError, ValueError, OSError) as error:
+    except (SourceError, BomError, OSError) as error:
         sys.exit(f"jlcpick: {error}")
 
 
@@ -54,21 +59,19 @@ def _positive(text: str) -> int:
     return int(text)
 
 
-def _designators(text: str) -> set[str]:
-    return set(re.findall(r"[^,\s]+", text))
+def _designators(text: str) -> list[str]:
+    return re.findall(r"[^,\s]+", text)
 
 
 def _bom(args: argparse.Namespace) -> None:
     lines = bom_input.assembled(
-        bom_input.read(args.bom.read_text(encoding="utf-8-sig")), args.exclude
+        bom_input.read(args.bom.read_text(encoding="utf-8-sig")), set(args.exclude)
     )
     footprints = None if args.pcb is None else board.footprints(args.pcb.read_text("utf-8"))
     codes = bom.codes(lines)
     if len(codes) > 1:
-        print(
-            f"jlcpick: looking up {len(codes)} parts, about {len(codes) * http.PAUSE_S:.0f} s",
-            file=sys.stderr,
-        )
+        seconds = len(codes) * http.pause("jlcpcb.com")
+        print(f"jlcpick: looking up {len(codes)} parts, about {seconds:.0f} s", file=sys.stderr)
     parts = {code: jlc.part(code) for code in codes}
     name = (args.pcb or args.bom).stem
     report = bom.report(name, lines, parts, args.qty, args.assembly, footprints)
@@ -78,9 +81,11 @@ def _bom(args: argparse.Namespace) -> None:
         print(json.dumps(asdict(report), indent=2, ensure_ascii=False))
     else:
         print(bom.text(report))
-    extended = [line.lcsc for line in report.lines if line.tier != "basic"]
-    if args.fail_on_extended and extended:
-        print(f"jlcpick: not basic: {', '.join(extended)}", file=sys.stderr)
+    paying = [line.lcsc for line in report.lines if line.feeder_fee and line.tier != "basic"]
+    if args.fail_on_extended and paying:
+        print(
+            f"jlcpick: extended parts paying the feeder fee: {', '.join(paying)}", file=sys.stderr
+        )
         sys.exit(3)
 
 

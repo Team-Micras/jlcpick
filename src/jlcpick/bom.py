@@ -80,7 +80,7 @@ def report(
         else [board[d] for line in group for d in line.designators if d in board]
         for code, group in groups.items()
     }
-    placements = [_placement(parts[code], placed[code], qty) for code in groups]
+    placements = [_placement(parts[code], groups[code], placed[code], qty) for code in groups]
     sides = len({f.side for found in placed.values() for f in found or [] if not f.tht}) or 1
     fees = pricing.fees(assembly, placements, sides)
     priced = [
@@ -118,6 +118,8 @@ def text(report: Report) -> str:
         f"  joints     {_joints(report.fees)}",
         f"  total      US$ {total:.2f}   per board US$ {total / report.qty:.2f}",
     ]
+    if report.assembly == "standard":
+        lines.append("  not included: packing, fixture and the per-board batch fee of Standard")
     others = [line for line in report.lines if line.tier != "basic"]
     if others:
         lines += ["", f"  not basic ({len(others)})", _ROW.format(*_HEADER)]
@@ -154,6 +156,7 @@ def _fees(report: Report) -> str:
         f"setup {_times(sides, schedule.setup, fees.setup_usd)}",
         f"stencil {_times(sides, schedule.stencil, fees.stencil_usd)}",
         f"{feeder} {len(fees.feeder_parts)} × {fees.feeder_each_usd:.2f} = {fees.feeder_usd:.2f}",
+        f"x-ray {fees.xray_units} × {fees.xray_each_usd:.2f} = {fees.xray_usd:.2f}",
     ]
     if report.assembly == "standard":
         parts.append(f"handling {fees.handling_usd:.2f}")
@@ -178,11 +181,15 @@ def _short(designators: tuple[str, ...]) -> str:
     return joined if len(joined) <= 14 else joined[:13] + "…"
 
 
-def _placement(part: Part, placed: list[Footprint] | None, qty: int) -> pricing.Placement:
+def _placement(
+    part: Part, group: list[BomLine], placed: list[Footprint] | None, qty: int
+) -> pricing.Placement:
+    units = sum(line.uses for line in group) * qty
     if placed is None:
-        return pricing.Placement(part, tht=None, joints=None)
+        return pricing.Placement(part, units, tht=None, joints=None)
     return pricing.Placement(
         part,
+        units,
         tht=any(footprint.tht for footprint in placed),
         joints=sum(footprint.joints for footprint in placed) * qty,
     )
@@ -190,7 +197,7 @@ def _placement(part: Part, placed: list[Footprint] | None, qty: int) -> pricing.
 
 def _line(placement: pricing.Placement, group: list[BomLine], qty: int, feeder_fee: bool) -> Line:
     part = placement.part
-    need = sum(line.uses for line in group) * qty
+    need = placement.units
     charged = pricing.charged(part, need)
     unit = pricing.unit_usd(part, charged)
     return Line(

@@ -97,7 +97,7 @@ def test_get_out_reuses_cached_cad_while_easyeda_blocks(network: Callable[..., N
     assert Path("second/C25744.step").read_bytes() == Path("first/C25744.step").read_bytes()
 
 
-def test_get_out_pauses_between_easyeda_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_pauses_per_site(monkeypatch: pytest.MonkeyPatch) -> None:
     clock = [100.0]
     calls: list[tuple[str, float]] = []
 
@@ -108,17 +108,18 @@ def test_get_out_pauses_between_easyeda_hosts(monkeypatch: pytest.MonkeyPatch) -
     def sleep(seconds: float) -> None:
         clock[0] += seconds
 
-    monkeypatch.setattr("jlcpick.sources.http.PAUSE_S", 3.0)
+    monkeypatch.setattr("jlcpick.sources.http.PAUSE_S", {"easyeda.com": 3.0})
+    monkeypatch.setattr("jlcpick.sources.http.DEFAULT_PAUSE_S", 2.0)
     monkeypatch.setattr("jlcpick.sources.http._last_request", {})
     monkeypatch.setattr("jlcpick.sources.http.time.monotonic", lambda: clock[0])
     monkeypatch.setattr("jlcpick.sources.http.time.sleep", sleep)
     monkeypatch.setattr("jlcpick.sources.http.urlopen", urlopen)
 
-    run("get", "C25744", "--out", "lib")
+    run("get", "C25744", "C8734", "--out", "lib")
 
-    [(_, cad_time)] = [call for call in calls if call[0] == "easyeda.com"]
-    [(_, step_time)] = [call for call in calls if call[0] == "modules.easyeda.com"]
-    assert step_time - cad_time >= 3.0
+    times = {host: [t for h, t in calls if h == host] for host in {h for h, _ in calls}}
+    assert times["jlcpcb.com"][1] - times["jlcpcb.com"][0] == 2.0
+    assert times["modules.easyeda.com"][0] - times["easyeda.com"][0] == 3.0
 
 
 def test_get_explains_when_the_network_is_down(monkeypatch: pytest.MonkeyPatch) -> None:

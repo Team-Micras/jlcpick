@@ -39,7 +39,8 @@ def recorded(request: Request, timeout: float) -> io.BytesIO:
 def network(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[..., None]:
     """Serve the recorded fixtures instead of the network, from a clean working directory."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("jlcpick.sources.http.PAUSE_S", 0)
+    monkeypatch.setattr("jlcpick.sources.http.PAUSE_S", {})
+    monkeypatch.setattr("jlcpick.sources.http.DEFAULT_PAUSE_S", 0)
 
     def serve(blocked_host: str | None = None) -> None:
         """Answer from the fixtures; ``blocked_host`` and its subdomains answer 403."""

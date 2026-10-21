@@ -2,9 +2,9 @@ $ jlcpick bom MicrasMainBoard-kicad-bom.csv --pcb MicrasMainBoard.kicad_pcb --qt
 MicrasMainBoard  ×5  Economic  fees as of 2026-09-09 (jlcpcb.com/help/article/pcb-assembly-price)
 
   parts      per board US$ 50.91   total US$ 254.55
-  fees       setup 8.18 · stencil 1.53 · extended 24 × 3.07 = 73.68
+  fees       setup 8.18 · stencil 1.53 · extended 24 × 3.07 = 73.68 · x-ray 20 × 0.82 = 16.40
   joints     SMT 2,295 = 3.67 · hand-soldered 75 + labor = 4.81
-  total      US$ 346.42   per board US$ 69.28
+  total      US$ 362.82   per board US$ 72.56
 
   not basic (39)
     lcsc       mpn                  designators    tier       used charged parts US$    fee

@@ -5,8 +5,8 @@ description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock
 
 # jlcpick
 
-Run it with `uvx jlcpick …` (from a clone: `uvx --from <repo> jlcpick …`). Always pass `--json`
-when you read the output yourself.
+jlcpick is not on PyPI yet: run it with `uvx --from <path to the clone or git+https://…> jlcpick …`.
+After it is published, `uvx jlcpick …` works. Always pass `--json` when you read the output yourself.
 
 ## Look up parts
 
@@ -46,7 +46,7 @@ Export the BOM from the schematic, then price it with the board:
 ```sh
 kicad-cli sch export bom board.kicad_sch -o bom.csv --ref-range-delimiter '' \
   --fields 'Reference,Value,Footprint,QUANTITY,DNP,LCSC' \
-  --labels 'Refs,Value,Footprint,Qty,DNP,LCSC' --group-by 'Value,Footprint,LCSC'
+  --labels 'Refs,Value,Footprint,Qty,DNP,LCSC' --group-by 'Value,Footprint,LCSC,DNP'
 jlcpick bom bom.csv --pcb board.kicad_pcb --qty 5 --json
 ```
 
@@ -61,7 +61,7 @@ read. A one-column CSV of codes works too, one use per row.
 | `--qty` | boards to assemble, default 5 |
 | `--assembly` | `economic` (default) or `standard` |
 | `--exclude U1,U3` | leave these designators out of the order, as if DNP. DNP rows are always left out |
-| `--fail-on-extended` | exit 3 when any part is not basic (preferred included) |
+| `--fail-on-extended` | exit 3 when an extended part pays the feeder fee: Economic, extended and not preferred; Standard, any extended part (preferred included) |
 
 The JSON report:
 
@@ -94,6 +94,7 @@ Each of `lines`:
 | `feeder_parts`, `feeder_each_usd`, `feeder_usd` | parts paying the feeder fee: Economic, extended SMT parts that are not preferred; Standard, every SMT part |
 | `smt_joints`, `smt_joints_usd` | machine-placed joints |
 | `manual_joints`, `manual_usd` | hand-soldered (THT) joints, plus the per-order labor fee |
+| `xray_units`, `xray_each_usd`, `xray_usd` | X-ray inspection, both assemblies: SMT units of leadless packages (BGA, QFN, DFN, LGA, WLCSP and variants), priced by the band their total reaches |
 | `handling_usd` | Standard only: what is missing for Standard to cost 14.93 more than Economic |
 | `total_usd` | all the fees |
 
@@ -107,14 +108,15 @@ To make a board cheaper, look at the lines with `feeder_fee: true` and at `charg
 | 0 | ok, possibly with warnings on stderr |
 | 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board |
 | 2 | invalid usage, e.g. a code that is not `C` + digits |
-| 3 | `bom --fail-on-extended` found a part that is not basic; the report is printed first |
+| 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first |
 
 ## Limits
 
 - EasyEDA blocks a client for about 10 minutes after ~25 requests a minute. jlcpick waits 3 s
-  between requests to the same site; do not run several jlcpick processes in parallel, and fetch
+  between requests to easyeda.com and 2 s to other sites; do not run several jlcpick processes in parallel, and fetch
   `--out` for many parts in one call rather than a loop of calls.
 - Prices, stock and tier are live and change over days; do not cache them across sessions.
-- `bom` looks up every distinct code once, 3 s apart: about 3 minutes for 60 parts.
+- `bom` looks up every distinct code once, 2 s apart: about 2 minutes for 60 parts.
 - Fees are JLC's published table on `fees_as_of`; JLC may have changed them since. The optional
-  "confirm part placement" (0.45) is not included.
+  "confirm part placement" (0.45) is not included. With `--assembly standard`, packing, fixture and
+  the per-board batch fee are not included either.
