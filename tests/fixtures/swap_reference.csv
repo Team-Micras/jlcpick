@@ -1,0 +1,20 @@
+lcsc,mpn,designators,tier_2026_10_21,expected,justification,owner_checked
+C963202,MK-12D18-G040,SW4,extended,no_rule,THT slide switch; switches have no parametric rule,no
+C412252,GRM31CR60J227ME11L,C56,extended,keep,"220uF 6.3V X5R 1206 MLCC; JLC search ""220uF 1206"" and ""220uF 6.3V"" returned no basic or preferred",no
+C338080,C2012X5R1V226MT000E,"C46,C47",extended,keep,22uF 35V X5R 0805; only basic 22uF 0805 is C45783 at 25V (lower voltage is worse),no
+C2938919,XAL6030-102MEC,L2,extended,no_rule,power inductor; inductors have no rule,no
+C2903562,HSBB3072,Q6,extended,no_rule,MOSFET; no basic LCSC for the same MPN,no
+C2988369,GT-USB-7010ASV,U2,extended,no_rule,USB-C connector,no
+C25905,0402WGF5101TCE,"R6,R7",basic,keep,5.1k 0402; extended in the 10973279A order but basic on 2026-10-21,no
+C22383774,VT1C221M0605,C36,extended,to_check,aluminium electrolytic 220uF 16V,no
+C42441131,KASML010,F1,extended,no_rule,PTC resettable fuse,no
+C778165,GT-TC048B-H025-L1,"SW2,SW3,SW5",extended,no_rule,tactile switch,no
+C2839926,YSPIA0645-220M,L3,extended,no_rule,power inductor,no
+C391031,FUET-5030,BZ1,extended,no_rule,buzzer,no
+C51953404,JVS25V100M6X4,C37,extended,to_check,aluminium electrolytic 100uF 25V,no
+C2862009,TPS611781RNWR,U1,extended,no_rule,IC; no basic LCSC for the same MPN,no
+C25908,0402WGF5601TCE,R30,preferred,keep,5.6k 0402; extended in the order but preferred on 2026-10-21 (no Economic fee),no
+C24253,CJA1117B-3.3,U3,extended,no_rule,LDO IC; no basic LCSC for the same MPN,no
+C25783,0402WGF3902TCE,R27,preferred,keep,39k 0402; extended in the order but preferred on 2026-10-21 (no Economic fee),no
+C5137554,FCC0402N180J500AT,"C22,C23",extended,C1549,"18pF 50V C0G 5% 0402 to 0402CG180J500NT 18pF 50V C0G 5% 0402, basic; every field equal (MicrasPCB jlc.toml already uses C1549)",no
+C2994645,HoLLR2512-3W-50mR-1%,R31,extended,to_check,50 mOhm shunt (below 1 Ohm),no
