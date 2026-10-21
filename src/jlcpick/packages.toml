@@ -1,8 +1,7 @@
 # KiCad's own symbol and footprint for each kind of part with a standard package. A part whose
 # JLC category is listed under a symbol gets that symbol and the footprint whose JLC package
 # names include the part's package. Every footprint here exists in KiCad 10.0.7 with a pad for
-# each pin of its symbol. To use the team's own footprints later, replace a footprint name with
-# the team's (e.g. "MicrasLib:R0402") and keep its JLC package names.
+# each pin of its symbol.
 
 ["Device:R"]
 kind = "Resistor"

@@ -223,3 +223,118 @@ def test_every_pin_of_a_stock_symbol_has_a_pad_in_its_footprint(symbol: str, foo
 def test_skill_documents_every_add_field() -> None:
     skill = (ROOT / "skills/jlcpick/SKILL.md").read_text()
     assert [f.name for f in fields(library.Outcome) if f"`{f.name}`" not in skill] == []
+
+
+def kicad_library() -> str:
+    return (KICAD / "symbols/Device.kicad_sym").read_text()
+
+
+def test_add_refuses_a_base_symbol_wired_differently_from_kicads(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    kicad = library.symbols(kicad_library())["D"]
+    swapped = kicad.replace('(number "1"', '(number "x"').replace('(number "2"', '(number "1"')
+    LIBRARY.parent.mkdir()
+    LIBRARY.write_text(
+        '(kicad_symbol_lib\n\t(version 20251024)\n\t(generator "jlcpick")\n\t'
+        + swapped.replace('(number "x"', '(number "2"')
+        + "\n)\n"
+    )
+    before = LIBRARY.read_text()
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["add", "C7420318"])
+
+    assert str(exit_info.value.code).startswith(
+        "jlcpick: lib/board.kicad_sym already has a `D` wired differently from KiCad's: "
+    )
+    assert LIBRARY.read_text() == before
+    assert not Path("sym-lib-table").exists()
+
+
+def test_add_puts_back_a_deleted_base_symbol() -> None:
+    run("add", "C25744")
+    symbols = library.symbols(LIBRARY.read_text())
+    LIBRARY.write_text(LIBRARY.read_text().replace(symbols["R"], ""))
+    assert "R" not in library.symbols(LIBRARY.read_text())
+
+    run("add", "C25744")
+
+    restored = library.symbols(LIBRARY.read_text())
+    assert restored["R"] == symbols["R"]
+    assert restored[R_10K] == symbols[R_10K]
+
+
+def test_add_refuses_two_codes_that_make_the_same_symbol() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["add", "C25744", "C9999999"])
+
+    assert exit_info.value.code == (
+        f'jlcpick: C25744 and C9999999 both make the symbol "{R_10K}"; add one of them at a time'
+    )
+    assert not LIBRARY.exists()
+
+
+def test_add_keeps_the_first_of_two_codes_with_the_same_mpn_across_calls(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run("add", "C25744")
+    first = LIBRARY.read_text()
+    capsys.readouterr()
+
+    run("add", "C9999999", "--json")
+
+    assert LIBRARY.read_text() == first
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)[0]["status"] == "kept"
+    assert "C9999999: lib/board.kicad_sym already has a different" in captured.err
+
+
+def test_add_warns_when_the_table_points_the_library_elsewhere(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    Path("sym-lib-table").write_text(
+        '(sym_lib_table\n\t(version 7)\n\t(lib (name "board") (type "KiCad") '
+        '(uri "${KIPRJMOD}/other.kicad_sym") (options "") (descr ""))\n)\n'
+    )
+
+    run("add", "C25744")
+
+    assert capsys.readouterr().err == (
+        "jlcpick: sym-lib-table maps `board` to ${KIPRJMOD}/other.kicad_sym, but add wrote "
+        "${KIPRJMOD}/lib/board.kicad_sym; point it at the right file\n"
+    )
+
+
+@pytest.mark.parametrize("content", ["", "(kicad_symbol_lib\n\t(version 20251024)\n"])
+def test_add_reports_an_empty_or_cut_off_library(content: str) -> None:
+    LIBRARY.parent.mkdir()
+    LIBRARY.write_text(content)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["add", "C25744"])
+
+    assert str(exit_info.value.code).startswith(
+        "jlcpick: lib/board.kicad_sym: empty or cut off, its parentheses do not balance"
+    )
+    assert LIBRARY.read_text() == content
+
+
+def test_add_ignores_a_kicad_of_another_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    old = tmp_path / "kicad9"
+    (old / "symbols").mkdir(parents=True)
+    (old / "symbols/Device.kicad_sym").write_text(
+        kicad_library().replace('(generator_version "10.0")', '(generator_version "9.0")')
+    )
+    monkeypatch.delenv("KICAD10_SYMBOL_DIR")
+    monkeypatch.setattr("jlcpick.cli.KICAD_SHARES", (str(old),))
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["add", "C25744"])
+
+    assert exit_info.value.code == (
+        f"jlcpick: KiCad 10's symbols not found (the KiCad found, {old}, is another version); "
+        "install KiCad 10 or set KICAD10_SYMBOL_DIR"
+    )

@@ -25,6 +25,9 @@ KICAD_SHARES = (
 )
 
 
+KICAD_10 = '(generator_version "10.0")'
+
+
 def main(argv: list[str] | None = None) -> None:
     """Parse arguments and run the requested command."""
     parser = argparse.ArgumentParser(prog="jlcpick")
@@ -174,11 +177,19 @@ def _add(codes: list[str], lib: Path, force: bool, as_json: bool) -> None:
         for nickname in {stock.symbol.partition(":")[0] for _, stock in stocked}
     }
     path = lib / f"{name}.kicad_sym"
-    old = _text(path) if path.exists() else library.EMPTY_LIBRARY
+    old = _existing(path, library.EMPTY_LIBRARY)
     present = library.symbols(old)
-    outcomes, changed = [], []
+    outcomes, changed, bases, named = [], [], {}, {}
     for part, stock in stocked:
         entry = _entry(part, stock, kicad, footprint_dir)
+        if entry.name in named:
+            sys.exit(
+                f"jlcpick: {named[entry.name]} and {part.lcsc} both make the symbol "
+                f'"{entry.name}"; add one of them at a time'
+            )
+        named[entry.name] = part.lcsc
+        _check_base(path, present, entry)
+        bases[entry.base] = None
         status = _status(present.get(entry.name), entry, force)
         outcomes.append(library.Outcome(part.lcsc, entry.name, stock.footprint, status))
         if status in ("added", "replaced"):
@@ -189,15 +200,45 @@ def _add(codes: list[str], lib: Path, force: bool, as_json: bool) -> None:
                 "--force replaces it",
                 file=sys.stderr,
             )
-    _write_if_changed(path, old, library.merge_symbols(old, changed))
+    _write_if_changed(path, old, library.merge_symbols(old, changed, list(bases)))
     uri = path.as_posix() if path.is_absolute() else f"${{KIPRJMOD}}/{path.as_posix()}"
     table = Path("sym-lib-table")
-    old_table = _text(table) if table.exists() else library.EMPTY_TABLE
+    old_table = _existing(table, library.EMPTY_TABLE)
+    registered = library.registered(old_table).get(name, uri)
+    if registered != uri:
+        print(
+            f"jlcpick: {table} maps `{name}` to {registered}, but add wrote {uri}; "
+            "point it at the right file",
+            file=sys.stderr,
+        )
     _write_if_changed(table, old_table, library.register(old_table, name, uri))
     if as_json:
         print(json.dumps([asdict(o) for o in outcomes], indent=2, ensure_ascii=False))
     else:
         print("\n".join(f"{o.lcsc:<10} {o.status:<9} {o.symbol} · {o.footprint}" for o in outcomes))
+
+
+def _existing(path: Path, empty: str) -> str:
+    if not path.exists():
+        return empty
+    text = _text(path)
+    try:
+        library.check(text)
+    except ValueError as error:
+        raise BomError(f"{path}: {error}") from error
+    return text
+
+
+def _check_base(path: Path, present: dict[str, str], entry: library.Entry) -> None:
+    ours = present.get(entry.base_name)
+    if ours is None or library.pins(ours) == library.pins(entry.base):
+        return
+    have, kicad = library.pins(ours), library.pins(entry.base)
+    sys.exit(
+        f"jlcpick: {path} already has a `{entry.base_name}` wired differently from KiCad's: "
+        f"it has {[p for p in have if p not in kicad]}, KiCad's has "
+        f"{[p for p in kicad if p not in have]}; restore it from KiCad's Device library"
+    )
 
 
 def _entry(
@@ -218,10 +259,22 @@ def _entry(
 def _kicad_dir(variable: str, kind: str) -> Path:
     if variable in os.environ:
         return Path(os.environ[variable])
-    found = [p for share in KICAD_SHARES for p in glob.glob(os.path.expanduser(f"{share}/{kind}"))]
-    if not found:
-        sys.exit(f"jlcpick: KiCad 10's {kind} not found; install KiCad 10 or set {variable}")
-    return Path(found[0])
+    found = [
+        Path(p) for share in KICAD_SHARES for p in glob.glob(os.path.expanduser(f"{share}/{kind}"))
+    ]
+    current = [p for p in found if KICAD_10 in _head(p.parent / "symbols" / "Device.kicad_sym")]
+    if not current:
+        other = f" (the KiCad found, {found[0].parent}, is another version)" if found else ""
+        sys.exit(f"jlcpick: KiCad 10's {kind} not found{other}; install KiCad 10 or set {variable}")
+    return current[0]
+
+
+def _head(path: Path) -> str:
+    try:
+        with path.open(encoding="utf-8") as file:
+            return file.read(512)
+    except OSError:
+        return ""
 
 
 def _status(present: str | None, entry: library.Entry, force: bool) -> library.Status:

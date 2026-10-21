@@ -33,7 +33,10 @@ _STRING = r'"(?:[^"\\]|\\.)*"'
 _LEXEME = re.compile(rf"{_STRING}|[()]")
 _HEAD = re.compile(rf"\((\w+) ({_STRING})")
 _PROPERTY = re.compile(rf"\(property {_STRING} {_STRING}")
-_TABLE_NAME = re.compile(rf"\(lib\s+\(name ({_STRING})\)")
+_TABLE_LIB = re.compile(
+    rf"\(lib\s+\(name ({_STRING})\)(?:\s*\((?!uri)\w+ {_STRING}\))*\s*\(uri ({_STRING})\)"
+)
+_PIN = re.compile(rf"\(name ({_STRING})|\(number ({_STRING})")
 _NOT_IN_NAMES = re.compile(r'[\x00-\x1f:/\\<>"]')
 
 
@@ -71,6 +74,11 @@ class Entry:
     def name(self) -> str:
         """The symbol's name in the library."""
         return _name(self.symbol)
+
+    @property
+    def base_name(self) -> str:
+        """The base symbol's name in the library."""
+        return _name(self.base)
 
 
 def stock(part: Part) -> Stock | None:
@@ -121,10 +129,28 @@ def symbols(library: str) -> dict[str, str]:
     return _children(library, "symbol")
 
 
-def merge_symbols(library: str, entries: Iterable[Entry]) -> str:
-    """``library`` with each entry's symbol, replacing one of the same name.
+def pins(symbol: str) -> list[tuple[str, str]]:
+    """The sorted ``(name, number)`` of each pin of ``symbol``."""
+    found = [(name or number)[1:-1] for name, number in _PIN.findall(symbol)]
+    return sorted(zip(found[::2], found[1::2], strict=True))
 
-    The base symbol an entry extends is added before it the first time and never replaced.
+
+def check(text: str) -> None:
+    """Raise `ValueError` unless ``text`` is a whole s-expression file."""
+    depth = 0
+    for lexeme in _LEXEME.finditer(text):
+        depth += {"(": 1, ")": -1}.get(lexeme.group(), 0)
+        if depth < 0:
+            break
+    if depth != 0 or not text.strip():
+        raise ValueError("empty or cut off, its parentheses do not balance")
+
+
+def merge_symbols(library: str, entries: Iterable[Entry], bases: Iterable[str] = ()) -> str:
+    """``library`` with each entry's symbol, replacing one of the same name, and the ``bases``.
+
+    The base symbol an entry extends is added before it the first time and never replaced; a
+    base in ``bases`` that the library lacks is added at the end.
     """
     for entry in entries:
         present = symbols(library)
@@ -134,15 +160,23 @@ def merge_symbols(library: str, entries: Iterable[Entry]) -> str:
         library = (
             _append(library, entry.symbol) if old is None else library.replace(old, entry.symbol, 1)
         )
+    for base in bases:
+        if _name(base) not in symbols(library):
+            library = _append(library, base)
     return library
 
 
 def register(table: str, nickname: str, uri: str) -> str:
     """``table``, a ``sym-lib-table``, with a library ``nickname`` at ``uri`` unless it has one."""
-    if _quote(nickname) in _TABLE_NAME.findall(table):
+    if nickname in registered(table):
         return table
     fields = f'(name {_quote(nickname)}) (type "KiCad") (uri {_quote(uri)}) (options "") (descr "")'
     return _append(table, f"(lib {fields})")
+
+
+def registered(table: str) -> dict[str, str]:
+    """The uri of each library of ``table``, a ``sym-lib-table``, by nickname."""
+    return {name[1:-1]: uri[1:-1] for name, uri in _TABLE_LIB.findall(table)}
 
 
 def missing_pads(symbol: str, footprint: str) -> list[str]:
