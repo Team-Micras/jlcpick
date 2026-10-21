@@ -12,6 +12,19 @@ uvx --from . jlcpick get C25744 C8734 --json    # the same as JSON
 uvx --from . jlcpick get C25744 --out parts     # also parts/C25744.kicad_mod and .step
 ```
 
+Add parts to a KiCad project's library, from the project's folder:
+
+```sh
+uvx --from /path/to/jlcpick jlcpick add C25744 C307331   # lib/<project>.kicad_sym + sym-lib-table
+```
+
+Each part gets a symbol named like `Resistor 10kΩ 0402 - 0402WGF1002TCE` that extends KiCad's
+own `Device:R` and uses KiCad's own footprint for its package, with its MPN, LCSC code,
+manufacturer, datasheet and description. The footprint for each package is in
+[src/jlcpick/packages.toml](src/jlcpick/packages.toml); it covers resistors, capacitors, inductors,
+LEDs, diodes and resettable fuses in standard packages, and other parts are refused for now. Running
+it again changes nothing; `--force` replaces a symbol that was edited.
+
 Price a board's assembly from its KiCad BOM:
 
 ```sh
@@ -53,6 +66,10 @@ into your agent's skills folder. [AGENTS.md](AGENTS.md) is for agents working on
 The pricing scenarios in the tests come from
 [Bouni/kicad-jlcpcb-tools](https://github.com/Bouni/kicad-jlcpcb-tools) (MIT), recalculated at
 today's fees.
+
+`add` copies base symbols from the [KiCad libraries](https://gitlab.com/kicad/libraries)
+(CC-BY-SA 4.0 with an exception for designs that use them); `tests/fixtures/kicad/` holds the
+symbols and footprints it uses, from KiCad 10.0.7.
 
 Footprint and 3D conversion by [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py)
 (AGPL-3.0).

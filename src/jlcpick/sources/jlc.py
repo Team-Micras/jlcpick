@@ -41,6 +41,7 @@ class Part:
     loss_qty: int
     params: Mapping[str, str]
     datasheet: str | None
+    description: str
 
 
 @dataclass(frozen=True)
@@ -109,4 +110,5 @@ def _part(item: dict[str, Any]) -> Part:
             a["attribute_name_en"]: a["attribute_value_name"] for a in item["attributes"] or []
         },
         datasheet=item["dataManualUrl"] or None,
+        description=item["describe"] or "",
     )

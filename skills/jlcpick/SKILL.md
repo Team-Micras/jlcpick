@@ -1,6 +1,6 @@
 ---
 name: jlcpick
-description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, and price a KiCad BOM for JLCPCB assembly with safe basic swaps, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), or estimating what assembling a board costs and which parts make it expensive.
+description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, add common parts to a KiCad project's symbol library on KiCad's own symbols and footprints, and price a KiCad BOM for JLCPCB assembly with safe basic swaps, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), putting a part with its MPN and LCSC code into a KiCad project, or estimating what assembling a board costs and which parts make it expensive.
 ---
 
 # jlcpick
@@ -24,7 +24,7 @@ Prints a JSON list, one object per code, in the order given:
 | `prices` | `[{from_qty, usd}]`, unit price from that quantity up |
 | `min_qty`, `loss_qty` | for non-basic parts JLC charges `max(need + loss_qty, min_qty)` units |
 | `params` | JLC's own attributes, e.g. `Resistance`, `Voltage Rating` |
-| `lcsc`, `package`, `category`, `mpn`, `manufacturer`, `datasheet` | as JLC lists them |
+| `lcsc`, `package`, `category`, `mpn`, `manufacturer`, `datasheet`, `description` | as JLC lists them |
 
 Cheapest to assemble: basic, then extended with `preferred: true`, then plain extended (a fee
 per distinct part).
@@ -38,6 +38,44 @@ jlcpick get C25744 --out parts
 Writes `parts/C25744.kicad_mod` and `parts/C25744.step`. The footprint is converted from EasyEDA
 and is a draft: tell the user to review it. A missing STEP or missing EasyEDA data is a warning on
 stderr, not a failure.
+
+## Add parts to the project library
+
+Run it in the KiCad project's folder, next to its `.kicad_pro`:
+
+```sh
+jlcpick add C25744 C307331 C2286 --json
+```
+
+Each part becomes a symbol in `lib/<project>.kicad_sym`, registered in the project's
+`sym-lib-table`. The symbol extends KiCad's own base symbol (`Device:R`, `Device:C`, `Device:LED`…,
+copied into the library once) and points at KiCad's own footprint for its package, e.g.
+`Resistor_SMD:R_0402_1005Metric`; it carries `MPN`, `LCSC`, `Manufacturer`, `Datasheet`,
+`Description` and `Value` (`10kΩ`, `100nF`, the LED color, or the MPN). Its name follows the
+team's: `Resistor 10kΩ 0402 - 0402WGF1002TCE`.
+
+Only kinds whose pins a package fixes are covered: chip resistors, MLCCs, SMD electrolytics, SMD
+inductors, LEDs, diodes (switching, general purpose, fast, Schottky, Zener) and resettable fuses,
+in the packages listed in `packages.toml` (0402 to 2512, SOD-123, SOD-323, SMA, SMB, SMC…). Any
+other part (ICs, transistors, connectors…) fails with exit 1 and nothing is written; `get --out`
+gives a draft footprint for it until the EasyEDA conversion lands in `add`.
+
+| Flag | Meaning |
+|---|---|
+| `--lib DIR` | folder of the library, default `lib` |
+| `--force` | replace a symbol of the same name that differs; without it the library's version is kept and a warning says so |
+| `--json` | print JSON |
+
+The JSON is a list, one object per code:
+
+| Field | Meaning |
+|---|---|
+| `lcsc` | the code |
+| `symbol`, `footprint` | the symbol's name in the library and its KiCad footprint |
+| `status` | `added`; `unchanged`, already there as is; `replaced`, with `--force`; `kept`, a different symbol of that name stays |
+
+Running `add` again changes no byte. jlcpick finds KiCad 10's libraries where KiCad installs them
+(also Flatpak); otherwise set `KICAD10_SYMBOL_DIR` and `KICAD10_FOOTPRINT_DIR`.
 
 ## Price a BOM
 
@@ -132,7 +170,7 @@ minimum order): a basic part with the same specs removes both.
 | Code | Meaning |
 |---|---|
 | 0 | ok, possibly with warnings on stderr |
-| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board |
+| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `add`, a part with no KiCad footprint in `packages.toml`, no `.kicad_pro` in the folder, KiCad 10 not found |
 | 2 | invalid usage, e.g. a code that is not `C` + digits |
 | 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first |
 

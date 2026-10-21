@@ -1,17 +1,28 @@
 """Command-line entry point."""
 
 import argparse
+import glob
 import json
 import logging
+import os
 import re
 import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from jlcpick import __version__, board, bom, bom_input, swaps
+from jlcpick import __version__, board, bom, bom_input, library, swaps
 from jlcpick.bom_input import BomError
 from jlcpick.sources import easyeda, http, jlc
 from jlcpick.sources.http import SourceError
+
+KICAD_SHARES = (
+    "/usr/share/kicad",
+    "/usr/local/share/kicad",
+    "/Applications/KiCad/KiCad.app/Contents/SharedSupport",
+    "C:/Program Files/KiCad/10.0/share/kicad",
+    "~/.local/share/flatpak/runtime/org.kicad.KiCad.Library.*/*/stable/active/files",
+    "/var/lib/flatpak/runtime/org.kicad.KiCad.Library.*/*/stable/active/files",
+)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -37,11 +48,20 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="exit 3 when an extended part pays the feeder fee",
     )
+    add = commands.add_parser("add", help="add parts to the project's symbol library")
+    add.add_argument("codes", nargs="+", type=_lcsc, metavar="LCSC", help="e.g. C25744")
+    add.add_argument(
+        "--lib", type=Path, default=Path("lib"), metavar="DIR", help="library folder (lib)"
+    )
+    add.add_argument("--force", action="store_true", help="replace a symbol of the same name")
+    add.add_argument("--json", action="store_true", help="print JSON")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.ERROR, format="jlcpick: %(message)s")
     try:
         if args.command == "get":
             _get(args.codes, args.json, args.out)
+        elif args.command == "add":
+            _add(args.codes, args.lib, args.force, args.json)
         else:
             _bom(args)
     except (SourceError, BomError, OSError) as error:
@@ -131,6 +151,91 @@ def _save_cad(code: str, out: Path) -> None:
         print(f"jlcpick: {code}: EasyEDA has no STEP model", file=sys.stderr)
     else:
         step.write_bytes(raw.step)
+
+
+def _add(codes: list[str], lib: Path, force: bool, as_json: bool) -> None:
+    projects = sorted(Path().glob("*.kicad_pro"))
+    if len(projects) != 1:
+        sys.exit("jlcpick: run add in the KiCad project's folder, next to its one .kicad_pro")
+    name = projects[0].stem
+    symbol_dir = _kicad_dir("KICAD10_SYMBOL_DIR", "symbols")
+    footprint_dir = _kicad_dir("KICAD10_FOOTPRINT_DIR", "footprints")
+    parts = [jlc.part(code) for code in dict.fromkeys(codes)]
+    found = [(part, library.stock(part)) for part in parts]
+    stocked = [(part, stock) for part, stock in found if stock is not None]
+    if len(stocked) < len(found):
+        unknown = ", ".join(f"{p.lcsc} ({p.package}, {p.category})" for p, s in found if s is None)
+        sys.exit(
+            f"jlcpick: packages.toml has no KiCad footprint for {unknown}; converting EasyEDA's "
+            "is not done yet, `jlcpick get CODE --out DIR` saves a draft footprint to review"
+        )
+    kicad = {
+        nickname: library.symbols(_text(symbol_dir / f"{nickname}.kicad_sym"))
+        for nickname in {stock.symbol.partition(":")[0] for _, stock in stocked}
+    }
+    path = lib / f"{name}.kicad_sym"
+    old = _text(path) if path.exists() else library.EMPTY_LIBRARY
+    present = library.symbols(old)
+    outcomes, changed = [], []
+    for part, stock in stocked:
+        entry = _entry(part, stock, kicad, footprint_dir)
+        status = _status(present.get(entry.name), entry, force)
+        outcomes.append(library.Outcome(part.lcsc, entry.name, stock.footprint, status))
+        if status in ("added", "replaced"):
+            changed.append(entry)
+        if status == "kept":
+            print(
+                f'jlcpick: {part.lcsc}: {path} already has a different "{entry.name}", kept; '
+                "--force replaces it",
+                file=sys.stderr,
+            )
+    _write_if_changed(path, old, library.merge_symbols(old, changed))
+    uri = path.as_posix() if path.is_absolute() else f"${{KIPRJMOD}}/{path.as_posix()}"
+    table = Path("sym-lib-table")
+    old_table = _text(table) if table.exists() else library.EMPTY_TABLE
+    _write_if_changed(table, old_table, library.register(old_table, name, uri))
+    if as_json:
+        print(json.dumps([asdict(o) for o in outcomes], indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(f"{o.lcsc:<10} {o.status:<9} {o.symbol} · {o.footprint}" for o in outcomes))
+
+
+def _entry(
+    part: jlc.Part, stock: library.Stock, kicad: dict[str, dict[str, str]], footprint_dir: Path
+) -> library.Entry:
+    nickname, _, symbol = stock.symbol.partition(":")
+    base = kicad[nickname][symbol]
+    footprint_nickname, _, footprint = stock.footprint.partition(":")
+    pads = _text(footprint_dir / f"{footprint_nickname}.pretty" / f"{footprint}.kicad_mod")
+    if pins := library.missing_pads(base, pads):
+        sys.exit(
+            f"jlcpick: {stock.footprint} has no pad for pin {', '.join(pins)} of {stock.symbol}; "
+            "fix packages.toml"
+        )
+    return library.entry(part, stock, base)
+
+
+def _kicad_dir(variable: str, kind: str) -> Path:
+    if variable in os.environ:
+        return Path(os.environ[variable])
+    found = [p for share in KICAD_SHARES for p in glob.glob(os.path.expanduser(f"{share}/{kind}"))]
+    if not found:
+        sys.exit(f"jlcpick: KiCad 10's {kind} not found; install KiCad 10 or set {variable}")
+    return Path(found[0])
+
+
+def _status(present: str | None, entry: library.Entry, force: bool) -> library.Status:
+    if present is None:
+        return "added"
+    if present == entry.symbol:
+        return "unchanged"
+    return "replaced" if force else "kept"
+
+
+def _write_if_changed(path: Path, old: str, new: str) -> None:
+    if new != old:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(new, encoding="utf-8")
 
 
 def _describe(part: jlc.Part) -> str:
