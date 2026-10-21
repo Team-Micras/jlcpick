@@ -61,6 +61,7 @@ def test_get_out_saves_footprint_and_step(capsys: pytest.CaptureFixture[str]) ->
         Path("lib/C25744.step").read_bytes()
         == (STEPS / "026a4a15ab5c4a92ac0e421d6d013717.step").read_bytes()
     )
+    assert '(property "LCSC Part" "C25744")' in footprint
     assert capsys.readouterr().err == ""
 
 

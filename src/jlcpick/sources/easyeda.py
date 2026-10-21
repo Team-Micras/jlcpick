@@ -32,6 +32,10 @@ _POINT = re.compile(
 _VERTEX = re.compile(r"VERTEX_POINT\s*\(\s*'[^']*'\s*,\s*#(\d+)")
 
 
+class StepError(SourceError):
+    """EasyEDA's STEP model cannot be read for its position."""
+
+
 @dataclass(frozen=True)
 class RawCad:
     """EasyEDA's component data and its STEP model, if it has one."""
@@ -78,20 +82,31 @@ def symbol(raw: RawCad) -> str:
     return re.sub(r"(?m)^(?:  )+", lambda indent: "\t" * (len(indent[0]) // 2), text)
 
 
-def footprint(raw: RawCad, step_path: PurePath) -> str:
-    """Convert ``raw`` to a ``.kicad_mod`` that names no part, its 3D model pointing at
-    ``step_path`` and placed where EasyEDA places it.
+def footprint(
+    raw: RawCad, step_path: PurePath, *, bare: bool = False, with_model: bool = True
+) -> str:
+    """Convert ``raw`` to a ``.kicad_mod`` with its 3D model pointing at ``step_path`` and placed
+    where EasyEDA places it. ``bare`` leaves out the part's LCSC code, MPN, maker and description,
+    so parts of one package share the file; ``with_model=False`` leaves out the 3D model. Raise
+    `StepError` when the STEP's position cannot be read.
 
     easyeda2kicad 1.0.1 leaves the STEP's offset at 0. EasyEDA puts the centre of the model's
     box, turned as the footprint turns it, at its translation and the model's bottom at its
-    height; the offset here does that. It assumes the STEP is in millimetres, as every EasyEDA
-    STEP measured is.
+    height; the offset here does that.
+
+    The box is that of the STEP's ``VERTEX_POINT``s, read from the text. It assumes that circular
+    edges have vertices at their extremes, that the STEP has no ``MAPPED_ITEM`` or other
+    placement transformation, and that it is in millimetres, as every EasyEDA STEP measured is.
+    Off a multiple of 90 degrees the box can miss an arc's bulge by about 0.01 mm.
     """
     exporter = ExporterFootprintKicad(EasyedaFootprintImporter(raw.cad).get_footprint())
     ki = exporter.get_ki_footprint()
-    ki.info.lcsc_id = ki.info.manufacturer = ki.info.mpn = ki.info.description = ""
+    if bare:
+        ki.info.lcsc_id = ki.info.manufacturer = ki.info.mpn = ki.info.description = ""
     model, source = ki.model_3d, exporter.input.model_3d
-    if model is not None:
+    if not with_model:
+        ki.model_3d = None
+    elif model is not None:
         model.name = step_path.stem
         if source is not None and raw.step is not None:
             model.translation = _step_offset(source, raw.step)
@@ -105,9 +120,14 @@ def _step_offset(model: Ee3dModel, step: bytes) -> Ki3dModelBase:
     text = step.decode("latin-1")
     points = {number: xyz for number, *xyz in _POINT.findall(text)}
     rotation = (model.rotation.x, model.rotation.y, model.rotation.z)
-    vertices = [_rotated(points[number], rotation) for number in _VERTEX.findall(text)]
+    try:
+        vertices = [_rotated(points[number], rotation) for number in _VERTEX.findall(text)]
+    except KeyError as error:
+        raise StepError(
+            f"{model.name}: EasyEDA's STEP model has a vertex without a point"
+        ) from error
     if not vertices:
-        raise SourceError(f"{model.name}: EasyEDA's STEP model has no vertices")
+        raise StepError(f"{model.name}: EasyEDA's STEP model has no vertices")
     xs, ys, zs = zip(*vertices, strict=True)
     return Ki3dModelBase(
         x=round(model.translation.x - (min(xs) + max(xs)) / 2, 3) + 0.0,

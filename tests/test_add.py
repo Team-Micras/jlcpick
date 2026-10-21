@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from conftest import STEPS, run
+from easyeda2kicad.easyeda.parameters_easyeda import Ee3dModel, Ee3dModelBase
 
 from jlcpick import library
 from jlcpick.cli import main
@@ -678,3 +679,46 @@ def test_add_force_calls_a_new_symbol_added(capsys: pytest.CaptureFixture[str]) 
     run("add", "C25744", "--force")
 
     assert capsys.readouterr().out.split()[1] == "added"
+
+
+STEP_BOX = """DATA;
+#1 = CARTESIAN_POINT ( 'NONE',  ( 0.0, 0.0, 0.0 ) ) ;
+#2 = CARTESIAN_POINT ( 'NONE',  ( 2.0, 1.0, 0.5 ) ) ;
+#3 = VERTEX_POINT ( 'NONE', #1 ) ;
+#4 = VERTEX_POINT ( 'NONE', #2 ) ;
+"""
+
+
+@pytest.mark.parametrize(
+    ("rotation", "offset"),
+    [(0, (-1.0, -0.5)), (90, (0.5, -1.0)), (180, (1.0, 0.5))],
+)
+def test_step_offset_turns_the_box_as_the_footprint_turns_it(
+    rotation: int, offset: tuple[float, float]
+) -> None:
+    model = Ee3dModel("m", "u", Ee3dModelBase(0, 0, 0), Ee3dModelBase(0, 0, rotation))
+
+    placed = easyeda._step_offset(model, STEP_BOX.encode())
+
+    assert (placed.x, placed.y, placed.z) == (offset[0], offset[1], 0.0)
+
+
+@pytest.mark.parametrize(
+    "step",
+    [b"DATA;\n", b"DATA;\n#3 = VERTEX_POINT ( 'NONE', #1 ) ;\n"],
+    ids=["no vertices", "vertex without a point"],
+)
+def test_add_goes_on_without_3d_when_the_step_cannot_be_read(
+    step: bytes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cache = Path(".jlcpick/cache")
+    cache.mkdir(parents=True)
+    (cache / "C2988369.step").write_bytes(step)
+
+    run("add", "C2988369")
+
+    captured = capsys.readouterr()
+    assert captured.err == "jlcpick: C2988369: STEP unreadable, added without 3D\n"
+    assert USB_C in library.symbols(LIBRARY.read_text())
+    assert "(model " not in Path(f"lib/board.pretty/{USB_C_FOOTPRINT}.kicad_mod").read_text()
+    assert not Path("lib/board.3dshapes").exists()

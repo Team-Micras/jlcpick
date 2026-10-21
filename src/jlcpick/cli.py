@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path, PurePath
 
 from jlcpick import __version__, board, bom, bom_input, library, swaps
@@ -298,7 +298,15 @@ def _converted(part: jlc.Part, lib: Path, name: str) -> library.Entry:
         )
     footprint = library.safe_name(easyeda.package(raw))
     step = lib / f"{name}.3dshapes" / f"{footprint}.step"
-    text = easyeda.footprint(raw, PurePath(_project_path(step)))
+    target = PurePath(_project_path(step))
+    if raw.step is None:
+        print(f"jlcpick: {part.lcsc}: EasyEDA has no STEP model", file=sys.stderr)
+    try:
+        text = easyeda.footprint(raw, target, bare=True)
+    except easyeda.StepError:
+        print(f"jlcpick: {part.lcsc}: STEP unreadable, added without 3D", file=sys.stderr)
+        raw = replace(raw, step=None)
+        text = easyeda.footprint(raw, target, bare=True, with_model=False)
     symbol = easyeda.symbol(raw)
     if pins := library.missing_pads(symbol, text):
         sys.exit(
@@ -308,9 +316,7 @@ def _converted(part: jlc.Part, lib: Path, name: str) -> library.Entry:
     files: dict[PurePath, bytes] = {
         lib / f"{name}.pretty" / f"{footprint}.kicad_mod": text.encode()
     }
-    if raw.step is None:
-        print(f"jlcpick: {part.lcsc}: EasyEDA has no STEP model", file=sys.stderr)
-    else:
+    if raw.step is not None:
         files[step] = raw.step
     return library.converted(part, symbol, f"{name}:{footprint}", files)
 
