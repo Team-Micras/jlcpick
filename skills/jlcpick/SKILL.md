@@ -94,7 +94,7 @@ Each `swap`:
 
 | Field | Meaning |
 |---|---|
-| `verdict` | `swap`: a basic or preferred part replaces it and no field gets worse; `to_check`: a person must decide; `no_rule`: jlcpick has no rule for this kind of part; `keep`: already basic or preferred, or no candidate is as good |
+| `verdict` | `swap`: a basic or preferred part replaces it and no field gets worse; `to_check`: a person must decide; `no_rule`: jlcpick has no rule for this kind of part; `keep`: already basic or preferred, or no candidate is as good, in stock or cheaper (a search JLC cut at 50 results says so) |
 | `reason` | for `swap`, `same MPN` or the attributes matched (`18pF 50V C0G ±5% 0402`); otherwise why, e.g. `C45783: voltage 25V vs 35V`, `shunt below 1 Ω` |
 | `to` | the replacement, only when `verdict` is `swap`; otherwise `null` |
 
@@ -102,8 +102,9 @@ Each `swap`:
 avoided plus the difference in parts and attrition at this `qty`. With several safe candidates it
 is the one that saves most.
 
-A swap is safe when the replacement is basic or preferred, in stock, and either has the same MPN
-or, for resistors and capacitors, is in the same JLC category and package, with the same value and
+A swap is safe when the replacement is basic or preferred, has enough stock for the order, saves
+money, and either has the same MPN, package and maker (the same MPN from another maker is
+`to_check`) or, for resistors and capacitors, is in the same JLC category and package, with the same value and
 equal or better voltage or power, tolerance, temperature coefficient (resistors) and dielectric
 (C0G = NP0 > X7R > X5R > Y5V). Electrolytic and polymer capacitors, shunts below 1 Ω, other
 dielectrics (X7S, X6S…) and attributes JLC leaves blank are `to_check`. ICs, connectors, LEDs,

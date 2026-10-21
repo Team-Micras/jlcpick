@@ -13,10 +13,10 @@ from typing import Literal
 
 from jlcpick import params
 from jlcpick.params import CapSpec, ResSpec
-from jlcpick.sources.jlc import Part
+from jlcpick.sources.jlc import Matches, Part
 
 type Verdict = Literal["swap", "to_check", "no_rule", "keep"]
-type Search = Callable[[str], Sequence[Part]]
+type Search = Callable[[str], Matches]
 
 DIELECTRIC_RANK = {"C0G": 3, "NP0": 3, "X7R": 2, "X5R": 1, "Y5V": 0}
 _FIELDS = {"voltage_v": ("V", True), "power_w": ("W", True), "tolerance": ("%", False),
@@ -37,9 +37,16 @@ def suggest(part: Part, search: Search) -> Suggestion:
     if part.tier == "basic" or part.preferred:
         return Suggestion("keep", f"already {'basic' if part.tier == 'basic' else 'preferred'}")
     mpn = part.mpn.casefold()
-    same_mpn = [c for c in _in_stock(search(part.mpn), part) if c.mpn.casefold() == mpn]
+    same_mpn = [
+        c
+        for c in _available(search(part.mpn).parts if mpn else (), part)
+        if c.mpn.casefold() == mpn and c.package == part.package
+    ]
+    same_maker = [c for c in same_mpn if c.manufacturer.casefold() == part.manufacturer.casefold()]
+    if same_maker:
+        return Suggestion("swap", "same MPN", tuple(same_maker))
     if same_mpn:
-        return Suggestion("swap", "same MPN", tuple(same_mpn))
+        return Suggestion("to_check", f"same MPN from {same_mpn[0].manufacturer}")
     old = params.spec(part)
     if old is None:
         return Suggestion("no_rule", f"no rule for {part.category}")
@@ -47,7 +54,8 @@ def suggest(part: Part, search: Search) -> Suggestion:
     if doubt:
         return Suggestion("to_check", doubt)
     value = part.params["Capacitance" if isinstance(old, CapSpec) else "Resistance"]
-    found = _in_stock(search(f"{value} {part.package}"), part)
+    matches = search(f"{value} {part.package}")
+    found = _available(matches.parts, part)
     judged = [
         (candidate, _compare(old, new))
         for candidate in found
@@ -63,13 +71,19 @@ def suggest(part: Part, search: Search) -> Suggestion:
     unsure = [f"{c.lcsc}: {', '.join(unknown)}" for c, (worse, unknown) in judged if not worse]
     if unsure:
         return Suggestion("to_check", "; ".join(unsure))
+    cut = "; search cut at 50 results" if matches.cut else ""
     if judged:
-        return Suggestion("keep", "; ".join(f"{c.lcsc}: {', '.join(w)}" for c, (w, _) in judged))
-    return Suggestion("keep", f"no basic or preferred {value} {part.package} in stock")
+        why = "; ".join(f"{c.lcsc}: {', '.join(w)}" for c, (w, _) in judged)
+        return Suggestion("keep", why + cut)
+    return Suggestion("keep", f"no basic or preferred {value} {part.package} in stock{cut}")
 
 
-def _in_stock(found: Sequence[Part], part: Part) -> list[Part]:
-    return [c for c in found if c.stock > 0 and c.lcsc != part.lcsc]
+def _available(found: Sequence[Part], part: Part) -> list[Part]:
+    return [
+        c
+        for c in found
+        if c.stock > 0 and c.lcsc != part.lcsc and (c.tier == "basic" or c.preferred)
+    ]
 
 
 def _doubt(part: Part, spec: CapSpec | ResSpec) -> str | None:

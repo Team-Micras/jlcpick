@@ -293,8 +293,13 @@ def _swap(suggestion: swaps.Suggestion, line: Line, assembly: pricing.Assembly) 
         fee = feeder if not line.tht and pricing.pays_feeder(new, assembly) else 0.0
         return round(now - round(charged * pricing.unit_usd(new, charged), 2) - fee, 2)
 
-    best = max(suggestion.candidates, key=saves, default=None)
+    stocked = [c for c in suggestion.candidates if c.stock >= pricing.charged(c, line.need)]
+    if suggestion.candidates and not stocked:
+        return Swap("keep", f"not enough stock for {line.need} units", None)
+    best = max(stocked, key=saves, default=None)
     if best is None:
         return Swap(suggestion.verdict, suggestion.reason, None)
+    if saves(best) <= 0:
+        return Swap("keep", f"{best.lcsc} costs {-saves(best):.2f} more", None)
     to = Replacement(best.lcsc, best.mpn, best.tier, best.preferred, saves(best))
     return Swap(suggestion.verdict, suggestion.reason, to)
