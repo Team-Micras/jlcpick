@@ -1,0 +1,51 @@
+$ jlcpick bom MicrasMainBoard-kicad-bom.csv --pcb MicrasMainBoard.kicad_pcb --qty 5
+MicrasMainBoard  ×5  Economic  fees as of 2026-09-09 (jlcpcb.com/help/article/pcb-assembly-price)
+
+  parts      per board US$ 50.91   total US$ 254.55
+  fees       setup 8.18 · stencil 1.53 · extended 24 × 3.07 = 73.68
+  joints     SMT 2,295 = 3.67 · hand-soldered 75 + labor = 4.81
+  total      US$ 346.42   per board US$ 69.28
+
+  not basic (39)
+    lcsc       mpn                  designators    tier       used charged parts US$    fee
+    C5271073   STM32H725RGV6        IC1            extended      5       5     53.62   3.07
+    C2938919   XAL6030-102MEC       L2             extended      5       5     36.20   3.07
+    C27345609  TSC2020IYST          IC3,IC4        extended     10      10     29.61   3.07
+    C5267399   LSM6DSVTR            IC2            extended      5       5     29.14   3.07
+    C20033901  STSPIN958TR          IC6            extended      5       5     21.22   3.07
+    C962257    L6205D013TR          IC5            extended      5       5     19.46   3.07
+    C5268095   L6981N33DR           IC7            extended      5       5     16.12   3.07
+    C412252    GRM31CR60J227ME11L   C56            extended      5       5      6.58   3.07
+    C2862009   TPS611781RNWR        U1             extended      5       5      5.71   3.07
+    C3293150   DSHP04TJGER          SW1            extended      5       5      3.24   3.07
+    C338080    C2012X5R1V226MT000E  C46,C47        extended     10      10      3.11   3.07
+    C2839926   YSPIA0645-220M       L3             extended      5       5      2.31   3.07
+    C391031    FUET-5030            BZ1            extended      5       5      2.29   3.07
+    C2903562   HSBB3072             Q6             extended      5       5      2.08   3.07
+    C778165    GT-TC048B-H025-L1    SW2,SW3,SW5    extended     15      17      1.80   3.07
+    C22371529  WS2815C-2020-4P      D1,D2          extended     10      12      1.44   3.07
+    C154679    LR2512-22R040F4      R32,R33        extended     10      14      1.36   3.07
+    C2994645   HoLLR2512-3W-50mR-1% R31            extended      5       9      0.76   3.07
+    C2988369   GT-USB-7010ASV       U2             extended      5       7      0.62   3.07
+    C24253     CJA1117B-3.3         U3             extended      5       9      0.58   3.07
+    C41347750  AFE201612S2R2MBT     L1             extended      5       9      0.41   3.07
+    C51953404  JVS25V100M6X4        C37            extended      5       5      0.39   3.07
+    C42441131  KASML010             F1             extended      5       9      0.29   3.07
+    C22383774  VT1C221M0605         C36            extended      5       5      0.21   3.07
+    C158050    B02B-PASK(LF)(SN)    J1,M1,M2,M3    extended     20      21      2.41
+    C963202    MK-12D18-G040        SW4            extended      5       6      0.90
+    C89811     NCD0603Y2            D4             preferred     5      20      0.39
+    C7420318   1N4148W              D3,D6,D7       preferred    15      29      0.20
+    C2691448   PZ254V-11-04P        P1             extended      5       6      0.17
+    C1537      0402B471K500NT       C42            preferred     5      20      0.08
+    C25796     0402WGF5602TCE       R37            preferred     5      20      0.06
+    C36871     0402WGF6802TCE       R38            preferred     5      20      0.04
+    C25783     0402WGF3902TCE       R27            preferred     5      20      0.03
+    C22795     0603WAF1303T5E       R40            preferred     5      20      0.03
+    C25130     0402WGF6800TCE       R4,R5          preferred    10      20      0.02
+    C25769     0402WGF2402TCE       R28            preferred     5      20      0.02
+    C25798     0402WGF7502TCE       R29            preferred     5      20      0.02
+    C25908     0402WGF5601TCE       R30            preferred     5      20      0.02
+    C25755     0402WGF1503TCE       R36            preferred     5      20      0.02
+
+  basic (25) → --json

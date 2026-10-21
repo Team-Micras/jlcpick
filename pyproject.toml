@@ -25,6 +25,7 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.17.1",
     "ty>=0.0.90",
+    "xlrd>=2.0.2",
 ]
 
 [tool.ruff]
@@ -32,6 +33,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+allowed-confusables = ["×"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

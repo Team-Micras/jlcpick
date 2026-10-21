@@ -8,8 +8,8 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from jlcpick import __version__
-from jlcpick.sources import easyeda, jlc
+from jlcpick import __version__, board, bom, bom_input
+from jlcpick.sources import easyeda, http, jlc
 from jlcpick.sources.http import SourceError
 
 
@@ -22,11 +22,22 @@ def main(argv: list[str] | None = None) -> None:
     get.add_argument("codes", nargs="+", type=_lcsc, metavar="LCSC", help="e.g. C25744")
     get.add_argument("--json", action="store_true", help="print JSON")
     get.add_argument("--out", type=Path, metavar="DIR", help="also save footprint and STEP")
+    cost = commands.add_parser("bom", help="price a KiCad BOM for JLCPCB assembly")
+    cost.add_argument("bom", type=Path, help="CSV from kicad-cli sch export bom, or LCSC codes")
+    cost.add_argument("--pcb", type=Path, help="the .kicad_pcb, for joints, sides and THT")
+    cost.add_argument("--qty", type=_positive, default=5, help="boards to assemble (5)")
+    cost.add_argument("--assembly", choices=["economic", "standard"], default="economic")
+    cost.add_argument("--exclude", type=_designators, default=set(), metavar="U1,U3")
+    cost.add_argument("--json", action="store_true", help="print JSON")
+    cost.add_argument("--fail-on-extended", action="store_true", help="exit 3 on a non-basic part")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.ERROR, format="jlcpick: %(message)s")
     try:
-        _get(args.codes, args.json, args.out)
-    except SourceError as error:
+        if args.command == "get":
+            _get(args.codes, args.json, args.out)
+        else:
+            _bom(args)
+    except (SourceError, ValueError, OSError) as error:
         sys.exit(f"jlcpick: {error}")
 
 
@@ -35,6 +46,42 @@ def _lcsc(text: str) -> str:
     if not re.fullmatch(r"C\d+", code):
         raise argparse.ArgumentTypeError(f"{text!r} is not an LCSC code like C25744")
     return code
+
+
+def _positive(text: str) -> int:
+    if not text.isdigit() or int(text) == 0:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a positive whole number")
+    return int(text)
+
+
+def _designators(text: str) -> set[str]:
+    return set(re.findall(r"[^,\s]+", text))
+
+
+def _bom(args: argparse.Namespace) -> None:
+    lines = bom_input.assembled(
+        bom_input.read(args.bom.read_text(encoding="utf-8-sig")), args.exclude
+    )
+    footprints = None if args.pcb is None else board.footprints(args.pcb.read_text("utf-8"))
+    codes = bom.codes(lines)
+    if len(codes) > 1:
+        print(
+            f"jlcpick: looking up {len(codes)} parts, about {len(codes) * http.PAUSE_S:.0f} s",
+            file=sys.stderr,
+        )
+    parts = {code: jlc.part(code) for code in codes}
+    name = (args.pcb or args.bom).stem
+    report = bom.report(name, lines, parts, args.qty, args.assembly, footprints)
+    for warning in report.warnings:
+        print(f"jlcpick: {warning}", file=sys.stderr)
+    if args.json:
+        print(json.dumps(asdict(report), indent=2, ensure_ascii=False))
+    else:
+        print(bom.text(report))
+    extended = [line.lcsc for line in report.lines if line.tier != "basic"]
+    if args.fail_on_extended and extended:
+        print(f"jlcpick: not basic: {', '.join(extended)}", file=sys.stderr)
+        sys.exit(3)
 
 
 def _get(codes: list[str], as_json: bool, out: Path | None) -> None:
