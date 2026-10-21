@@ -2,9 +2,10 @@
 
 import re
 import tomllib
-from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, field
 from importlib.resources import files
+from pathlib import PurePath
 from typing import Literal, NotRequired, TypedDict
 
 from jlcpick.sources.jlc import Part
@@ -14,6 +15,7 @@ EMPTY_LIBRARY = (
     '\t(generator_version "10.0")\n)\n'
 )
 EMPTY_TABLE = "(sym_lib_table\n\t(version 7)\n)\n"
+EMPTY_FOOTPRINT_TABLE = "(fp_lib_table\n\t(version 7)\n)\n"
 
 
 class Rule(TypedDict):
@@ -31,13 +33,15 @@ PACKAGES: dict[str, Rule] = tomllib.loads(
 
 _STRING = r'"(?:[^"\\]|\\.)*"'
 _LEXEME = re.compile(rf"{_STRING}|[()]")
-_HEAD = re.compile(rf"\((\w+) ({_STRING})")
-_PROPERTY = re.compile(rf"\(property {_STRING} {_STRING}")
+_HEAD = re.compile(rf"\((\w+)\s+({_STRING})")
+_PROPERTY = re.compile(rf"\(property\s+({_STRING})\s+({_STRING})")
+_EXTENDS = re.compile(rf"\(extends ({_STRING})\)")
 _TABLE_LIB = re.compile(
     rf"\(lib\s+\(name ({_STRING})\)(?:\s*\((?!uri)\w+ {_STRING}\))*\s*\(uri ({_STRING})\)"
 )
 _PIN = re.compile(rf"\(name ({_STRING})|\(number ({_STRING})")
 _NOT_IN_NAMES = re.compile(r'[\x00-\x1f:/\\<>"]')
+_PAREN = re.compile(r"\s*\([^)]*\)")
 
 
 type Status = Literal["added", "unchanged", "replaced", "kept"]
@@ -45,12 +49,16 @@ type Status = Literal["added", "unchanged", "replaced", "kept"]
 
 @dataclass(frozen=True)
 class Outcome:
-    """What ``add`` did with a part: ``kept`` leaves a different symbol of the same name as is."""
+    """What ``add`` did with a part: ``kept`` leaves a different symbol or file as is.
+
+    ``draft`` parts were converted from EasyEDA: their footprint and 3D model need a review.
+    """
 
     lcsc: str
     symbol: str
     footprint: str
     status: Status
+    draft: bool
 
 
 @dataclass(frozen=True)
@@ -65,10 +73,12 @@ class Stock:
 
 @dataclass(frozen=True)
 class Entry:
-    """A part's symbol, derived from the KiCad base symbol it ``extends``."""
+    """A part's symbol, derived from the KiCad ``base`` symbol it ``extends`` or, without a base,
+    converted from EasyEDA, with the ``files`` of its footprint and 3D model by path."""
 
     symbol: str
-    base: str
+    base: str | None
+    files: Mapping[PurePath, bytes] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -77,8 +87,8 @@ class Entry:
 
     @property
     def base_name(self) -> str:
-        """The base symbol's name in the library."""
-        return _name(self.base)
+        """The base symbol's name in the library; empty without a base."""
+        return "" if self.base is None else _name(self.base)
 
 
 def stock(part: Part) -> Stock | None:
@@ -95,33 +105,59 @@ def stock(part: Part) -> Stock | None:
         if value == "-":
             value = part.mpn
         label = rule["kind"] if value == part.mpn else f"{rule['kind']} {value}"
-        name = _NOT_IN_NAMES.sub("_", f"{label} {part.package} - {part.mpn}")
-        return Stock(symbol, footprint, name, value)
+        return Stock(symbol, footprint, _symbol_name(label, part), value)
     return None
 
 
-def entry(part: Part, stock: Stock, base: str) -> Entry:
-    """The symbol of ``part``: ``base``, KiCad's own ``stock.symbol``, with the part's fields."""
-    fields = {
-        "Value": stock.value,
-        "Footprint": stock.footprint,
-        "Datasheet": part.datasheet or "",
-        "Description": part.description,
-        "MPN": part.mpn,
-        "Manufacturer": part.manufacturer,
-        "LCSC": part.lcsc,
-    }
-    properties = _children(base, "property")
-    keywords = [block for name, block in properties.items() if name.startswith("ki_")]
-    blocks = [
-        _with_value(block, name, fields.pop(name, None))
-        for name, block in properties.items()
-        if not name.startswith("ki_")
-    ]
-    blocks += [_with_value(properties["Datasheet"], name, value) for name, value in fields.items()]
-    lines = [f"(symbol {_quote(stock.name)}", f"(extends {_quote(_name(base))})"]
-    lines += [*blocks, *keywords]
+def by_mpn(part: Part, kicad: Mapping[str, Mapping[str, str]]) -> Stock | None:
+    """KiCad's own symbol named after ``part.mpn`` in the ``kicad`` libraries, if it names a
+    footprint; None otherwise."""
+    for nickname, blocks in kicad.items():
+        footprint = value(blocks.get(part.mpn, ""), "Footprint")
+        if footprint:
+            name = _symbol_name(_kind(part), part)
+            return Stock(f"{nickname}:{part.mpn}", footprint, name, part.mpn)
+    return None
+
+
+def entry(part: Part, stock: Stock, base: str, source: str) -> Entry:
+    """The symbol of ``part``, extending ``base``, a root KiCad symbol, with the fields of
+    ``source``, KiCad's ``stock.symbol`` (``base`` itself unless it extends one), set to the
+    part's."""
+    properties = _children(source, "property")
+    blocks = _with_fields(properties, _fields(part, stock.value, stock.footprint))
+    lines = [f"(symbol {_quote(stock.name)}", f"(extends {_quote(_name(base))})", *blocks]
     return Entry("\n\t\t".join([*lines, "(embedded_fonts no)"]) + "\n\t)", base)
+
+
+def converted(part: Part, symbol: str, footprint: str, files: Mapping[PurePath, bytes]) -> Entry:
+    """The symbol of ``part`` from ``symbol``, converted from EasyEDA, renamed and with the
+    part's fields, its footprint ``footprint`` and its ``files``."""
+    name = _symbol_name(_kind(part), part)
+    spans = [(start, end) for start, end in _spans(symbol, 1) if _head(symbol, start) == "property"]
+    blocks = _with_fields(_children(symbol, "property"), _fields(part, part.mpn, footprint))
+    indent = symbol[symbol.rindex("\n", 0, spans[0][0]) : spans[0][0]]
+    symbol = symbol[: spans[0][0]] + indent.join(blocks) + symbol[spans[-1][1] :]
+    old = re.escape(_name(symbol))
+    unit = re.compile(rf'(\(symbol\s+)"{old}(_\d+_\d+)?"')
+    return Entry(unit.sub(lambda m: m[1] + _quote(name + (m[2] or "")), symbol), None, files)
+
+
+def parent(symbol: str) -> str | None:
+    """The name of the symbol ``symbol`` extends; None for a root symbol."""
+    extends = _EXTENDS.search(symbol)
+    return None if extends is None else extends[1][1:-1]
+
+
+def value(symbol: str, name: str) -> str:
+    """The value of the property ``name`` of ``symbol``; empty when it has none."""
+    found = {key[1:-1]: text[1:-1] for key, text in _PROPERTY.findall(symbol)}
+    return found.get(name, "")
+
+
+def safe_name(text: str) -> str:
+    """``text`` with the characters KiCad does not take in a symbol or footprint name as ``_``."""
+    return _NOT_IN_NAMES.sub("_", text)
 
 
 def symbols(library: str) -> dict[str, str]:
@@ -154,7 +190,7 @@ def merge_symbols(library: str, entries: Iterable[Entry], bases: Iterable[str] =
     """
     for entry in entries:
         present = symbols(library)
-        if _name(entry.base) not in present:
+        if entry.base is not None and _name(entry.base) not in present:
             library = _append(library, entry.base)
         old = present.get(entry.name)
         library = (
@@ -181,8 +217,46 @@ def registered(table: str) -> dict[str, str]:
 
 def missing_pads(symbol: str, footprint: str) -> list[str]:
     """The pin numbers of ``symbol`` that ``footprint``, a ``.kicad_mod``, has no pad for."""
-    pads = set(re.findall(rf"\(pad ({_STRING})", footprint))
-    return [pin[1:-1] for pin in re.findall(rf"\(number ({_STRING})", symbol) if pin not in pads]
+    pads = {pad.strip('"') for pad in re.findall(rf"\(pad ({_STRING}|[^\s()]+)", footprint)}
+    pins = [pin[1:-1] for pin in re.findall(rf"\(number ({_STRING})", symbol)]
+    return [pin for pin in pins if pin not in pads]
+
+
+def _symbol_name(label: str, part: Part) -> str:
+    return safe_name(f"{label} {part.package} - {part.mpn}")
+
+
+def _kind(part: Part) -> str:
+    return _PAREN.sub("", part.category)
+
+
+def _fields(part: Part, value: str, footprint: str) -> dict[str, str]:
+    return {
+        "Value": value,
+        "Footprint": footprint,
+        "Datasheet": part.datasheet or "",
+        "Description": part.description,
+        "MPN": part.mpn,
+        "Manufacturer": part.manufacturer,
+        "LCSC": part.lcsc,
+    }
+
+
+def _with_fields(properties: dict[str, str], fields: dict[str, str]) -> list[str]:
+    template = properties.get("Datasheet") or properties["Footprint"]
+    keywords = [block for name, block in properties.items() if name.startswith("ki_")]
+    blocks = [
+        _with_value(block, name, fields.pop(name, None))
+        for name, block in properties.items()
+        if not name.startswith("ki_")
+    ]
+    blocks += [_with_value(template, name, value) for name, value in fields.items()]
+    return [*blocks, *keywords]
+
+
+def _head(text: str, start: int) -> str | None:
+    head = _HEAD.match(text, start)
+    return None if head is None else head[1]
 
 
 def _spans(text: str, depth: int) -> Iterator[tuple[int, int]]:

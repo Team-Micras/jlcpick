@@ -8,7 +8,7 @@ import os
 import re
 import sys
 from dataclasses import asdict
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from jlcpick import __version__, board, bom, bom_input, library, swaps
 from jlcpick.bom_input import BomError
@@ -167,58 +167,77 @@ def _add(codes: list[str], lib: Path, force: bool, as_json: bool) -> None:
     symbol_dir = _kicad_dir("KICAD10_SYMBOL_DIR", "symbols")
     footprint_dir = _kicad_dir("KICAD10_FOOTPRINT_DIR", "footprints")
     parts = [jlc.part(code) for code in dict.fromkeys(codes)]
-    found = [(part, library.stock(part)) for part in parts]
-    stocked = [(part, stock) for part, stock in found if stock is not None]
-    if len(stocked) < len(found):
-        unknown = ", ".join(f"{p.lcsc} ({p.package}, {p.category})" for p, s in found if s is None)
-        sys.exit(
-            f"jlcpick: packages.toml has no KiCad footprint for {unknown}; converting EasyEDA's "
-            "is not done yet, `jlcpick get CODE --out DIR` saves a draft footprint to review"
-        )
-    kicad = {
-        nickname: library.symbols(_text(symbol_dir / f"{nickname}.kicad_sym"))
-        for nickname in {stock.symbol.partition(":")[0] for _, stock in stocked}
-    }
+    kicad = _kicad_symbols(symbol_dir, parts)
+    entries = [_entry(part, kicad, footprint_dir, lib, name) for part in parts]
+    _refuse_clashes(parts, entries)
     path = lib / f"{name}.kicad_sym"
     old = _existing(path, library.EMPTY_LIBRARY)
     present = library.symbols(old)
-    outcomes, changed, bases, named = [], [], {}, {}
-    for part, stock in stocked:
-        entry = _entry(part, stock, kicad, footprint_dir)
-        if entry.name in named:
-            sys.exit(
-                f"jlcpick: {named[entry.name]} and {part.lcsc} both make the symbol "
-                f'"{entry.name}"; add one of them at a time'
-            )
-        named[entry.name] = part.lcsc
+    outcomes, changed, bases = [], [], {}
+    for part, entry in zip(parts, entries, strict=True):
         _check_base(path, present, entry)
-        bases[entry.base] = None
-        status = _status(present.get(entry.name), entry, force)
-        outcomes.append(library.Outcome(part.lcsc, entry.name, stock.footprint, status))
+        if entry.base is not None:
+            bases[entry.base] = None
+        status, differ = _status(path, present.get(entry.name), entry, force)
+        footprint = library.value(entry.symbol, "Footprint")
+        outcomes.append(
+            library.Outcome(part.lcsc, entry.name, footprint, status, bool(entry.files))
+        )
         if status in ("added", "replaced"):
             changed.append(entry)
         if status == "kept":
             print(
-                f'jlcpick: {part.lcsc}: {path} already has a different "{entry.name}", kept; '
-                "--force replaces it",
+                f"jlcpick: {part.lcsc}: {'; '.join(differ)}, kept; --force replaces it",
                 file=sys.stderr,
             )
+    for file, data in {f: d for entry in changed for f, d in entry.files.items()}.items():
+        if _read(file) != data:
+            Path(file).parent.mkdir(parents=True, exist_ok=True)
+            Path(file).write_bytes(data)
     _write_if_changed(path, old, library.merge_symbols(old, changed, list(bases)))
-    uri = path.as_posix() if path.is_absolute() else f"${{KIPRJMOD}}/{path.as_posix()}"
-    table = Path("sym-lib-table")
-    old_table = _existing(table, library.EMPTY_TABLE)
-    registered = library.registered(old_table).get(name, uri)
+    _register(Path("sym-lib-table"), library.EMPTY_TABLE, name, path)
+    if any(outcome.draft for outcome in outcomes):
+        pretty = lib / f"{name}.pretty"
+        _register(Path("fp-lib-table"), library.EMPTY_FOOTPRINT_TABLE, name, pretty)
+    if as_json:
+        print(json.dumps([asdict(o) for o in outcomes], indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(map(_outcome, outcomes)))
+
+
+def _outcome(o: library.Outcome) -> str:
+    line = f"{o.lcsc:<10} {o.status:<9} {o.symbol} · {o.footprint}"
+    return f"{line}  draft: review footprint and 3D" if o.draft else line
+
+
+def _register(table: Path, empty: str, name: str, path: Path) -> None:
+    uri = _project_path(path)
+    old = _existing(table, empty)
+    registered = library.registered(old).get(name, uri)
     if registered != uri:
         print(
             f"jlcpick: {table} maps `{name}` to {registered}, but add wrote {uri}; "
             "point it at the right file",
             file=sys.stderr,
         )
-    _write_if_changed(table, old_table, library.register(old_table, name, uri))
-    if as_json:
-        print(json.dumps([asdict(o) for o in outcomes], indent=2, ensure_ascii=False))
-    else:
-        print("\n".join(f"{o.lcsc:<10} {o.status:<9} {o.symbol} · {o.footprint}" for o in outcomes))
+    _write_if_changed(table, old, library.register(old, name, uri))
+
+
+def _project_path(path: Path) -> str:
+    return path.as_posix() if path.is_absolute() else f"${{KIPRJMOD}}/{path.as_posix()}"
+
+
+def _kicad_symbols(symbol_dir: Path, parts: list[jlc.Part]) -> dict[str, dict[str, str]]:
+    stocked = {s.symbol.partition(":")[0] for p in parts if (s := library.stock(p)) is not None}
+    wanted = [f'\n\t(symbol "{p.mpn}"\n' for p in parts if library.stock(p) is None]
+    paths = [symbol_dir / f"{nickname}.kicad_sym" for nickname in sorted(stocked)]
+    paths += sorted(symbol_dir.glob("*.kicad_sym")) if wanted else []
+    kicad = {}
+    for path in dict.fromkeys(paths):
+        text = _text(path)
+        if path.stem in stocked or any(mpn in text for mpn in wanted):
+            kicad[path.stem] = library.symbols(text)
+    return kicad
 
 
 def _existing(path: Path, empty: str) -> str:
@@ -233,6 +252,8 @@ def _existing(path: Path, empty: str) -> str:
 
 
 def _check_base(path: Path, present: dict[str, str], entry: library.Entry) -> None:
+    if entry.base is None:
+        return
     ours = present.get(entry.base_name)
     if ours is None or library.pins(ours) == library.pins(entry.base):
         return
@@ -240,15 +261,19 @@ def _check_base(path: Path, present: dict[str, str], entry: library.Entry) -> No
     sys.exit(
         f"jlcpick: {path} already has a `{entry.base_name}` wired differently from KiCad's: "
         f"it has {[p for p in have if p not in kicad]}, KiCad's has "
-        f"{[p for p in kicad if p not in have]}; restore it from KiCad's Device library"
+        f"{[p for p in kicad if p not in have]}; restore it from KiCad's library"
     )
 
 
 def _entry(
-    part: jlc.Part, stock: library.Stock, kicad: dict[str, dict[str, str]], footprint_dir: Path
+    part: jlc.Part, kicad: dict[str, dict[str, str]], footprint_dir: Path, lib: Path, name: str
 ) -> library.Entry:
+    stock = library.stock(part) or library.by_mpn(part, kicad)
+    if stock is None:
+        return _converted(part, lib, name)
     nickname, _, symbol = stock.symbol.partition(":")
-    base = kicad[nickname][symbol]
+    source = kicad[nickname][symbol]
+    base = kicad[nickname][library.parent(source) or symbol]
     footprint_nickname, _, footprint = stock.footprint.partition(":")
     pads = _text(footprint_dir / f"{footprint_nickname}.pretty" / f"{footprint}.kicad_mod")
     if pins := library.missing_pads(base, pads):
@@ -256,7 +281,33 @@ def _entry(
             f"jlcpick: {stock.footprint} has no pad for pin {', '.join(pins)} of {stock.symbol}; "
             "fix packages.toml"
         )
-    return library.entry(part, stock, base)
+    return library.entry(part, stock, base, source)
+
+
+def _converted(part: jlc.Part, lib: Path, name: str) -> library.Entry:
+    raw = easyeda.cad(part.lcsc)
+    if raw is None:
+        sys.exit(
+            f"jlcpick: {part.lcsc} ({part.package}, {part.category}): no KiCad symbol or "
+            "footprint fits it and EasyEDA has nothing to convert; draw it by hand"
+        )
+    footprint = library.safe_name(easyeda.package(raw))
+    step = lib / f"{name}.3dshapes" / f"{footprint}.step"
+    text = easyeda.footprint(raw, PurePath(_project_path(step)))
+    symbol = easyeda.symbol(raw)
+    if pins := library.missing_pads(symbol, text):
+        sys.exit(
+            f"jlcpick: {part.lcsc}: EasyEDA's footprint has no pad for pin {', '.join(pins)} of "
+            "its symbol; nothing written"
+        )
+    files: dict[PurePath, bytes] = {
+        lib / f"{name}.pretty" / f"{footprint}.kicad_mod": text.encode()
+    }
+    if raw.step is None:
+        print(f"jlcpick: {part.lcsc}: EasyEDA has no STEP model", file=sys.stderr)
+    else:
+        files[step] = raw.step
+    return library.converted(part, symbol, f"{name}:{footprint}", files)
 
 
 def _kicad_dir(variable: str, kind: str) -> Path:
@@ -281,12 +332,43 @@ def _head(path: Path) -> str:
         return ""
 
 
-def _status(present: str | None, entry: library.Entry, force: bool) -> library.Status:
-    if present is None:
-        return "added"
-    if present == entry.symbol:
-        return "unchanged"
-    return "replaced" if force else "kept"
+def _status(
+    path: Path, present: str | None, entry: library.Entry, force: bool
+) -> tuple[library.Status, list[str]]:
+    old = {file: _read(file) for file in entry.files}
+    differ = [
+        f"{file.as_posix()} is different"
+        for file in old
+        if old[file] not in (None, entry.files[file])
+    ]
+    if present not in (None, entry.symbol):
+        differ.insert(0, f'{path} already has a different "{entry.name}"')
+    if differ:
+        return ("replaced" if force else "kept"), differ
+    return ("added" if present is None or None in old.values() else "unchanged"), []
+
+
+def _refuse_clashes(parts: list[jlc.Part], entries: list[library.Entry]) -> None:
+    symbols: dict[str, str] = {}
+    files: dict[PurePath, tuple[str, bytes]] = {}
+    for part, entry in zip(parts, entries, strict=True):
+        if entry.name in symbols:
+            sys.exit(
+                f"jlcpick: {symbols[entry.name]} and {part.lcsc} both make the symbol "
+                f'"{entry.name}"; add one of them at a time'
+            )
+        symbols[entry.name] = part.lcsc
+        for file, data in entry.files.items():
+            first, other = files.setdefault(file, (part.lcsc, data))
+            if other != data:
+                sys.exit(
+                    f"jlcpick: {first} and {part.lcsc} both make {file.as_posix()}, differently; "
+                    "add one of them at a time"
+                )
+
+
+def _read(path: PurePath) -> bytes | None:
+    return Path(path).read_bytes() if Path(path).exists() else None
 
 
 def _write_if_changed(path: Path, old: str, new: str) -> None:

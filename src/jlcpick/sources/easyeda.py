@@ -11,9 +11,11 @@ from typing import Any
 from easyeda2kicad.easyeda.easyeda_importer import (
     Easyeda3dModelImporter,
     EasyedaFootprintImporter,
+    EasyedaSymbolImporter,
 )
 from easyeda2kicad.easyeda.parameters_easyeda import Ee3dModel
 from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
+from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad
 from easyeda2kicad.kicad.parameters_kicad_footprint import Ki3dModelBase
 
 from jlcpick.sources.http import SourceError, fetch, fetch_json
@@ -21,6 +23,7 @@ from jlcpick.sources.http import SourceError, fetch, fetch_json
 CAD_URL = "https://easyeda.com/api/products/{lcsc}/components?version=6.4.19.5"
 STEP_URL = "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{uuid}"
 CACHE = Path(".jlcpick/cache")
+KICAD_10_SYMBOLS = 20251024
 _NUMBER = r"[-+0-9.Ee]+"
 _POINT = re.compile(
     rf"#(\d+)\s*=\s*CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*"
@@ -61,9 +64,23 @@ def cad(lcsc: str) -> RawCad | None:
     return RawCad(data, step_path.read_bytes())
 
 
+def package(raw: RawCad) -> str:
+    """EasyEDA's name for the footprint of ``raw``."""
+    return EasyedaFootprintImporter(raw.cad).get_footprint().info.name
+
+
+def symbol(raw: RawCad) -> str:
+    """Convert ``raw`` to a KiCad 10 symbol block indented by tabs, without EasyEDA's ``LCSC Part``
+    field."""
+    converted = EasyedaSymbolImporter(raw.cad).get_symbol()
+    converted.info.lcsc_id = ""
+    text = ExporterSymbolKicad(converted, version=KICAD_10_SYMBOLS).export("").strip()
+    return re.sub(r"(?m)^(?:  )+", lambda indent: "\t" * (len(indent[0]) // 2), text)
+
+
 def footprint(raw: RawCad, step_path: PurePath) -> str:
-    """Convert ``raw`` to a ``.kicad_mod``, its 3D model pointing at ``step_path`` and placed
-    where EasyEDA places it.
+    """Convert ``raw`` to a ``.kicad_mod`` that names no part, its 3D model pointing at
+    ``step_path`` and placed where EasyEDA places it.
 
     easyeda2kicad 1.0.1 leaves the STEP's offset at 0. EasyEDA puts the centre of the model's
     box, turned as the footprint turns it, at its translation and the model's bottom at its
@@ -71,7 +88,9 @@ def footprint(raw: RawCad, step_path: PurePath) -> str:
     STEP measured is.
     """
     exporter = ExporterFootprintKicad(EasyedaFootprintImporter(raw.cad).get_footprint())
-    model, source = exporter.get_ki_footprint().model_3d, exporter.input.model_3d
+    ki = exporter.get_ki_footprint()
+    ki.info.lcsc_id = ki.info.manufacturer = ki.info.mpn = ki.info.description = ""
+    model, source = ki.model_3d, exporter.input.model_3d
     if model is not None:
         model.name = step_path.stem
         if source is not None and raw.step is not None:

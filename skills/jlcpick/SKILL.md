@@ -1,6 +1,6 @@
 ---
 name: jlcpick
-description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, add common parts to a KiCad project's symbol library on KiCad's own symbols and footprints, and price a KiCad BOM for JLCPCB assembly with safe basic swaps, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), putting a part with its MPN and LCSC code into a KiCad project, or estimating what assembling a board costs and which parts make it expensive.
+description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, add parts to a KiCad project's library (KiCad's own symbols and footprints when they fit, otherwise a draft converted from EasyEDA), and price a KiCad BOM for JLCPCB assembly with safe basic swaps, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), putting a part with its MPN and LCSC code into a KiCad project, or estimating what assembling a board costs and which parts make it expensive.
 ---
 
 # jlcpick
@@ -44,26 +44,38 @@ stderr, not a failure.
 Run it in the KiCad project's folder, next to its `.kicad_pro`:
 
 ```sh
-jlcpick add C25744 C307331 C2286 --json
+jlcpick add C25744 C20917 C2988369 --json
 ```
 
 Each part becomes a symbol in `lib/<project>.kicad_sym`, registered in the project's
-`sym-lib-table`. The symbol extends KiCad's own base symbol (`Device:R`, `Device:C`, `Device:LED`…,
-copied into the library once) and points at KiCad's own footprint for its package, e.g.
-`Resistor_SMD:R_0402_1005Metric`; it carries `MPN`, `LCSC`, `Manufacturer`, `Datasheet`,
-`Description` and `Value` (`10kΩ`, `100nF`, the LED color, or the MPN). Its name follows the
-team's: `Resistor 10kΩ 0402 - 0402WGF1002TCE`.
+`sym-lib-table`, with `MPN`, `LCSC`, `Manufacturer`, `Datasheet`, `Description` and `Value`.
+Its name follows the team's: `Resistor 10kΩ 0402 - 0402WGF1002TCE`, `MOSFETs SOT-23 - AO3400A`.
+jlcpick takes the first of these that fits the part:
 
-Only kinds whose pins a package fixes are covered: chip resistors, MLCCs, SMD electrolytics, SMD
-inductors, LEDs, diodes (switching, general purpose, fast, Schottky, Zener) and resettable fuses,
-in the packages listed in `packages.toml` (0402 to 2512, SOD-123, SOD-323, SMA, SMB, SMC…). Any
-other part (ICs, transistors, connectors…) fails with exit 1 and nothing is written; `get --out`
-gives a draft footprint for it until the EasyEDA conversion lands in `add`.
+1. **KiCad's own symbol and footprint for the package**, for chip resistors, MLCCs, SMD
+   electrolytics, SMD inductors, LEDs, diodes (switching, general purpose, fast, Schottky, Zener)
+   and resettable fuses in the packages listed in `packages.toml` (0402 to 2512, SOD-123, SOD-323,
+   SMA, SMB, SMC…). The symbol extends KiCad's base symbol (`Device:R`, `Device:C`…, copied into
+   the library once) and points at KiCad's footprint, e.g. `Resistor_SMD:R_0402_1005Metric`.
+   `Value` is `10kΩ`, `100nF`, the LED color, or the MPN.
+2. **KiCad's own symbol named after the MPN**, when KiCad 10 has one with a footprint, e.g.
+   `Transistor_FET:AO3400A`, `Regulator_Linear:AMS1117-3.3`. The symbol extends the KiCad symbol
+   that one extends (`Q_NMOS_GSD`, copied once) and keeps its footprint
+   (`Package_TO_SOT_SMD:SOT-23`), keywords and pins. The name must match exactly:
+   `STM32H725RGV6` does not match KiCad's `STM32H725RGVx`.
+3. **A draft converted from EasyEDA**, for everything else (ICs, connectors…): symbol, footprint
+   and STEP. The footprint goes to `lib/<project>.pretty/<EasyEDA package>.kicad_mod`, registered
+   in the project's `fp-lib-table`; the STEP to `lib/<project>.3dshapes/`, referenced from the
+   footprint as `${KIPRJMOD}/lib/<project>.3dshapes/…`. jlcpick places the STEP where EasyEDA
+   does; easyeda2kicad alone leaves it 1.05 mm off on the USB-C C2988369. The output marks the part `draft: review
+   footprint and 3D`: tell the user to check pads, silkscreen, courtyard and 3D before ordering.
+   Parts with the same EasyEDA package share one footprint. KiCad reformats a converted symbol
+   when it saves the library, so a later `add` of that part says `kept`.
 
 | Flag | Meaning |
 |---|---|
 | `--lib DIR` | folder of the library, default `lib` |
-| `--force` | replace a symbol of the same name that differs; without it the library's version is kept and a warning says so |
+| `--force` | replace a symbol of the same name, or a footprint or STEP of the same name, that differs; without it the library's version is kept and a warning says so |
 | `--json` | print JSON |
 
 The JSON is a list, one object per code:
@@ -71,11 +83,33 @@ The JSON is a list, one object per code:
 | Field | Meaning |
 |---|---|
 | `lcsc` | the code |
-| `symbol`, `footprint` | the symbol's name in the library and its KiCad footprint |
-| `status` | `added`; `unchanged`, already there as is; `replaced`, with `--force`; `kept`, a different symbol of that name stays |
+| `symbol`, `footprint` | the symbol's name in the library and its footprint (`<project>:<name>` for a draft) |
+| `status` | `added`; `unchanged`, already there as is; `replaced`, with `--force`; `kept`, a different symbol, footprint or STEP of that name stays |
+| `draft` | `true` when converted from EasyEDA: review its footprint and 3D |
 
 Running `add` again changes no byte. jlcpick finds KiCad 10's libraries where KiCad installs them
 (also Flatpak); otherwise set `KICAD10_SYMBOL_DIR` and `KICAD10_FOOTPRINT_DIR`.
+
+Warnings (stderr, exit 0):
+
+- `CODE: <library> already has a different "<symbol>"; <file> is different, kept`: someone
+  edited the part; `--force` replaces it with jlcpick's version.
+- `sym-lib-table maps <project> to <uri>, but add wrote <uri>` (or `fp-lib-table`): the table
+  points the project's library at another file; fix the table, jlcpick leaves it as is.
+- `CODE: EasyEDA has no STEP model`: the draft has a footprint without 3D.
+
+Errors (exit 1, nothing written):
+
+- `CODE (package, category): no KiCad symbol or footprint fits it and EasyEDA has nothing to
+  convert`: draw the part by hand.
+- `<library> already has a <base> wired differently from KiCad's`: a base symbol in the library
+  (`D`, `Q_NMOS_GSD`…) has other pin numbers than KiCad's; restore it from KiCad's library.
+- `CODE1 and CODE2 both make the symbol "<name>"` (same MPN under two codes), or `both make
+  <file>, differently` (two EasyEDA footprints with one name): add one of them at a time.
+- `<library>: empty or cut off, its parentheses do not balance`: the library or a table is
+  damaged; restore it from git.
+- `CODE: EasyEDA's footprint has no pad for pin N of its symbol`: EasyEDA's data is wrong.
+- `<footprint> has no pad for pin N of <symbol>; fix packages.toml`: a bug in jlcpick's tables.
 
 ## Price a BOM
 
@@ -170,7 +204,7 @@ minimum order): a basic part with the same specs removes both.
 | Code | Meaning |
 |---|---|
 | 0 | ok, possibly with warnings on stderr |
-| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `add`, a part with no KiCad footprint in `packages.toml`, no `.kicad_pro` in the folder, KiCad 10 not found |
+| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
 | 2 | invalid usage, e.g. a code that is not `C` + digits |
 | 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first |
 

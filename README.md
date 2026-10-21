@@ -15,15 +15,22 @@ uvx --from . jlcpick get C25744 --out parts     # also parts/C25744.kicad_mod an
 Add parts to a KiCad project's library, from the project's folder:
 
 ```sh
-uvx --from /path/to/jlcpick jlcpick add C25744 C307331   # lib/<project>.kicad_sym + sym-lib-table
+uvx --from /path/to/jlcpick jlcpick add C25744 C20917 C2988369   # lib/<project>.kicad_sym + sym-lib-table
 ```
 
-Each part gets a symbol named like `Resistor 10kΩ 0402 - 0402WGF1002TCE` that extends KiCad's
-own `Device:R` and uses KiCad's own footprint for its package, with its MPN, LCSC code,
-manufacturer, datasheet and description. The footprint for each package is in
-[src/jlcpick/packages.toml](src/jlcpick/packages.toml); it covers resistors, capacitors, inductors,
-LEDs, diodes and resettable fuses in standard packages, and other parts are refused for now. Running
-it again changes nothing; `--force` replaces a symbol that was edited.
+Each part gets a symbol named like `Resistor 10kΩ 0402 - 0402WGF1002TCE`, with its MPN, LCSC code,
+manufacturer, datasheet and description:
+
+- resistors, capacitors, inductors, LEDs, diodes and resettable fuses in standard packages extend
+  KiCad's own `Device:R`… and use KiCad's own footprint for the package, listed in
+  [src/jlcpick/packages.toml](src/jlcpick/packages.toml);
+- a part whose MPN names a KiCad symbol, like `Transistor_FET:AO3400A`, extends that symbol and
+  keeps its KiCad footprint;
+- anything else is converted from EasyEDA as a draft to review: the footprint goes to
+  `lib/<project>.pretty` (registered in `fp-lib-table`) and its STEP to `lib/<project>.3dshapes`,
+  placed on the pads.
+
+Running it again changes nothing; `--force` replaces a symbol, footprint or STEP that was edited.
 
 Price a board's assembly from its KiCad BOM:
 
@@ -71,7 +78,7 @@ today's fees.
 (CC-BY-SA 4.0 with an exception for designs that use them); `tests/fixtures/kicad/` holds the
 symbols and footprints it uses, from KiCad 10.0.7.
 
-Footprint and 3D conversion by [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py)
+Symbol, footprint and 3D conversion by [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py)
 (AGPL-3.0).
 
 Licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
