@@ -12,6 +12,7 @@ from jlcpick.cli import main
 
 PARTS = Path(__file__).parent / "fixtures" / "parts"
 SEARCHES = Path(__file__).parent / "fixtures" / "search"
+STEPS = Path(__file__).parent / "fixtures" / "step"
 
 
 def run(*argv: str) -> None:
@@ -35,7 +36,7 @@ def recorded(request: Request, timeout: float) -> io.BytesIO:
     if url.startswith("https://easyeda.com/api/products/"):
         return io.BytesIO((PARTS / f"{url.split('/')[-2]}_easyeda.json").read_bytes())
     if url.startswith("https://modules.easyeda.com/"):
-        return io.BytesIO(f"STEP {url.rsplit('/', 1)[-1]}".encode())
+        return io.BytesIO((STEPS / f"{url.rsplit('/', 1)[-1]}.step").read_bytes())
     raise AssertionError(f"unexpected request to {url}")
 
 

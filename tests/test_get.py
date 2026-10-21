@@ -7,7 +7,7 @@ from urllib.error import URLError
 from urllib.request import Request
 
 import pytest
-from conftest import recorded, run
+from conftest import STEPS, recorded, run
 
 from jlcpick.cli import main
 from jlcpick.sources.jlc import Part
@@ -56,7 +56,11 @@ def test_get_out_saves_footprint_and_step(capsys: pytest.CaptureFixture[str]) ->
     footprint = Path("lib/C25744.kicad_mod").read_text()
     assert footprint.count("(pad ") == 2
     assert f'(model "{Path("lib").resolve()}/C25744.step"' in footprint
-    assert Path("lib/C25744.step").read_bytes().startswith(b"STEP ")
+    assert "(offset (xyz 0.000 -0.001 0.000))" in footprint
+    assert (
+        Path("lib/C25744.step").read_bytes()
+        == (STEPS / "026a4a15ab5c4a92ac0e421d6d013717.step").read_bytes()
+    )
     assert capsys.readouterr().err == ""
 
 
