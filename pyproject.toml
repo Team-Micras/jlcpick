@@ -1,0 +1,37 @@
+[project]
+name = "jlcpick"
+version = "0.1.0"
+description = "Look up JLCPCB parts and audit KiCad boards for JLCPCB assembly"
+readme = "README.md"
+authors = [
+    { name = "PedroDeSanti", email = "phmartinsanti@gmail.com" }
+]
+requires-python = ">=3.12"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = []
+
+[project.scripts]
+jlcpick = "jlcpick.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.22,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+    "ty>=0.0.90",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-m", "not live", "--strict-markers"]
+markers = ["live: hits the real JLCPCB and EasyEDA endpoints"]
