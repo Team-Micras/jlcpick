@@ -44,17 +44,34 @@ class Part:
 
 def part(lcsc: str) -> Part:
     """Look up ``lcsc``; raise `SourceError` when JLCPCB has no part with that exact code."""
-    response = fetch_json(SEARCH_URL, {"keyword": lcsc, "currentPage": 1, "pageSize": 10})
+    found = _search(lcsc, {"pageSize": 10})
     try:
-        if response.get("code") != 200:
-            raise SourceError(f"JLCPCB search failed: {response.get('message')}")
-        found = response["data"]["componentPageInfo"]["list"] or []
         item = next((item for item in found if item["componentCode"] == lcsc), None)
         if item is None:
             raise SourceError(f"{lcsc}: JLCPCB has no part with this code")
         return _part(item)
     except (KeyError, TypeError, AttributeError) as error:
         raise SourceError(f"{lcsc}: JLCPCB answered in an unexpected format") from error
+
+
+def basic_or_preferred(keyword: str) -> list[Part]:
+    """The first 50 basic or preferred parts with a price that JLCPCB's text search finds."""
+    found = _search(keyword, {"pageSize": 50, "componentLibraryType": "base",
+                              "preferredComponentFlag": True})  # fmt: skip
+    try:
+        return [_part(item) for item in found if item["componentPrices"]]
+    except (KeyError, TypeError, AttributeError) as error:
+        raise SourceError(f"{keyword}: JLCPCB answered in an unexpected format") from error
+
+
+def _search(keyword: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
+    response = fetch_json(SEARCH_URL, {"keyword": keyword, "currentPage": 1, **filters})
+    try:
+        if response.get("code") != 200:
+            raise SourceError(f"JLCPCB search failed: {response.get('message')}")
+        return response["data"]["componentPageInfo"]["list"] or []
+    except (KeyError, TypeError, AttributeError) as error:
+        raise SourceError(f"{keyword}: JLCPCB answered in an unexpected format") from error
 
 
 def _part(item: dict[str, Any]) -> Part:

@@ -1,6 +1,6 @@
 ---
 name: jlcpick
-description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, and price a KiCad BOM for JLCPCB assembly with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), or estimating what assembling a board costs and which parts make it expensive.
+description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, and price a KiCad BOM for JLCPCB assembly with safe basic swaps, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), or estimating what assembling a board costs and which parts make it expensive.
 ---
 
 # jlcpick
@@ -62,6 +62,8 @@ read. A one-column CSV of codes works too, one use per row.
 | `--assembly` | `economic` (default) or `standard` |
 | `--exclude U1,U3` | leave these designators out of the order, as if DNP. DNP rows are always left out |
 | `--fail-on-extended` | exit 3 when an extended part pays the feeder fee: Economic, extended and not preferred; Standard, any extended part (preferred included) |
+| `--verbose` | in the text report, also list the parts no swap replaces, with the reason |
+| `--no-swaps` | skip the search for safe swaps: one or two searches per extended part, 72 s of 226 s on a board with 27 |
 
 The JSON report:
 
@@ -72,6 +74,7 @@ The JSON report:
 | `sides` | assembled SMT sides (Standard charges setup and stencil per side) |
 | `lines` | one per distinct part, costliest first (below) |
 | `parts_usd`, `total_usd` | parts for every board; parts plus fees |
+| `saves_usd` | what all the safe swaps save together; `null` with `--no-swaps` |
 | `fees` | the order's fees (below) |
 | `warnings` | rows without a code, designators missing from the board, no `--pcb` |
 
@@ -85,6 +88,27 @@ Each of `lines`:
 | `unit_usd`, `total_usd` | price at the break `charged` reaches, and `charged × unit_usd` |
 | `feeder_fee` | the part pays the feeder fee (`fees.feeder_each_usd`) |
 | `tht`, `joints` | hand-soldered or not, solder joints on all boards; `null` without `--pcb` |
+| `swap` | what to do with the part (below); `null` with `--no-swaps` |
+
+Each `swap`:
+
+| Field | Meaning |
+|---|---|
+| `verdict` | `swap`: a basic or preferred part replaces it and no field gets worse; `to_check`: a person must decide; `no_rule`: jlcpick has no rule for this kind of part; `keep`: already basic or preferred, or no candidate is as good |
+| `reason` | for `swap`, `same MPN` or the attributes matched (`18pF 50V C0G ±5% 0402`); otherwise why, e.g. `C45783: voltage 25V vs 35V`, `shunt below 1 Ω` |
+| `to` | the replacement, only when `verdict` is `swap`; otherwise `null` |
+
+`to` has `lcsc`, `mpn`, `tier` and `preferred` of the replacement, and `saves_usd`: the feeder fee
+avoided plus the difference in parts and attrition at this `qty`. With several safe candidates it
+is the one that saves most.
+
+A swap is safe when the replacement is basic or preferred, in stock, and either has the same MPN
+or, for resistors and capacitors, is in the same JLC category and package, with the same value and
+equal or better voltage or power, tolerance, temperature coefficient (resistors) and dielectric
+(C0G = NP0 > X7R > X5R > Y5V). Electrolytic and polymer capacitors, shunts below 1 Ω, other
+dielectrics (X7S, X6S…) and attributes JLC leaves blank are `to_check`. ICs, connectors, LEDs,
+inductors, switches, fuses and everything else that is not a resistor or capacitor are `no_rule`
+unless the same MPN exists as basic or preferred.
 
 `fees`, each in US$ rounded to the cent:
 
@@ -98,8 +122,9 @@ Each of `lines`:
 | `handling_usd` | Standard only: what is missing for Standard to cost 14.93 more than Economic |
 | `total_usd` | all the fees |
 
-To make a board cheaper, look at the lines with `feeder_fee: true` and at `charged` well above
-`need` (a minimum order): a basic part with the same specs removes both.
+To make a board cheaper, apply the lines whose `swap.verdict` is `swap`; then look at the
+`to_check` ones and the lines with `feeder_fee: true` and at `charged` well above `need` (a
+minimum order): a basic part with the same specs removes both.
 
 ## Exit codes
 
@@ -116,7 +141,9 @@ To make a board cheaper, look at the lines with `feeder_fee: true` and at `charg
   between requests to easyeda.com and 2 s to other sites; do not run several jlcpick processes in parallel, and fetch
   `--out` for many parts in one call rather than a loop of calls.
 - Prices, stock and tier are live and change over days; do not cache them across sessions.
-- `bom` looks up every distinct code once, 2 s apart: about 2 minutes for 60 parts.
+- `bom` looks up every distinct code once, 2 s apart: about 2 minutes for 60 parts, plus one or
+  two searches per extended part for swaps (the MainBoard, 64 parts and 27 extended, took 226 s;
+  154 s with `--no-swaps`).
 - Fees are JLC's published table on `fees_as_of`; JLC may have changed them since. The optional
   "confirm part placement" (0.45) is not included. With `--assembly standard`, packing, fixture and
   the per-board batch fee are not included either.

@@ -78,6 +78,7 @@ def test_bom_json_reports_lines_fees_and_warnings(capsys: pytest.CaptureFixture[
         "feeder_fee": True,
         "tht": False,
         "joints": 32,
+        "swap": {"verdict": "no_rule", "reason": "no rule for USB Connectors", "to": None},
     }
     assert (report["qty"], report["sides"], report["fees_as_of"]) == (2, 1, "2026-09-09")
     assert report["warnings"] == [
@@ -186,6 +187,14 @@ def test_bom_exits_1_on_an_unknown_excluded_designator() -> None:
     assert code == "jlcpick: --exclude: not in the BOM: U99, X1"
 
 
+def test_bom_exits_1_on_a_bom_that_is_not_utf8() -> None:
+    Path("bom.csv").write_bytes(b"Refs,LCSC,Value\nR1,C25744,10k\xb5\n")
+
+    assert exit_code("bom", "bom.csv") == (
+        "jlcpick: bom.csv: not UTF-8 text; save it as UTF-8 and try again"
+    )
+
+
 def test_bom_exits_1_when_the_board_is_not_a_kicad_board() -> None:
     Path("board.kicad_pcb").write_text("(kicad_sch)")
 
@@ -290,12 +299,16 @@ def test_bom_charges_order_10973279a_like_jlc(
     part = replace(jlc.part(code), prices=(jlc.PriceBreak(1, usd / qty),))
     line = BomLine(tuple(designators.split(",")), code, False)
 
-    [priced] = bom.report("10973279A", [line], {code: part}, 2, "economic", None).lines
+    [priced] = bom.report("10973279A", [line], {code: part}, 2, "economic", None, None).lines
 
     assert priced.charged == qty
 
 
 def test_skill_documents_every_bom_report_field() -> None:
     skill = (ROOT / "skills/jlcpick/SKILL.md").read_text()
-    names = {f.name for kind in (bom.Report, bom.Line, Fees) for f in fields(kind)}
+    names = {
+        f.name
+        for kind in (bom.Report, bom.Line, bom.Swap, bom.Replacement, Fees)
+        for f in fields(kind)
+    }
     assert sorted(name for name in names if f"`{name}`" not in skill) == []
