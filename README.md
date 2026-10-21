@@ -30,7 +30,7 @@ manufacturer, datasheet and description:
   `lib/<project>.pretty` (registered in `fp-lib-table`) and its STEP to `lib/<project>.3dshapes`,
   placed on the pads.
 
-Running it again changes nothing; `--force` replaces a symbol, footprint or STEP that was edited.
+Running it again changes nothing; `--force` replaces a symbol that was edited, and a footprint or STEP that was edited unless another symbol uses it.
 
 Price a board's assembly from its KiCad BOM:
 

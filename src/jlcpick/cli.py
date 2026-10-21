@@ -173,27 +173,30 @@ def _add(codes: list[str], lib: Path, force: bool, as_json: bool) -> None:
     path = lib / f"{name}.kicad_sym"
     old = _existing(path, library.EMPTY_LIBRARY)
     present = library.symbols(old)
-    outcomes, changed, bases = [], [], {}
+    outcomes, changed, writes, bases = [], [], {}, {}
+    names = {entry.name for entry in entries}
     for part, entry in zip(parts, entries, strict=True):
         _check_base(path, present, entry)
         if entry.base is not None:
             bases[entry.base] = None
-        status, differ = _status(path, present.get(entry.name), entry, force)
         footprint = library.value(entry.symbol, "Footprint")
+        users = [
+            n
+            for n, s in present.items()
+            if n not in names and library.value(s, "Footprint") == footprint
+        ]
+        status, notes, files = _status(part, path, present.get(entry.name), entry, force, users)
         outcomes.append(
             library.Outcome(part.lcsc, entry.name, footprint, status, bool(entry.files))
         )
         if status in ("added", "replaced"):
             changed.append(entry)
-        if status == "kept":
-            print(
-                f"jlcpick: {part.lcsc}: {'; '.join(differ)}, kept; --force replaces it",
-                file=sys.stderr,
-            )
-    for file, data in {f: d for entry in changed for f, d in entry.files.items()}.items():
-        if _read(file) != data:
-            Path(file).parent.mkdir(parents=True, exist_ok=True)
-            Path(file).write_bytes(data)
+        writes.update(files)
+        for note in notes:
+            print(f"jlcpick: {part.lcsc}: {note}", file=sys.stderr)
+    for file, data in writes.items():
+        Path(file).parent.mkdir(parents=True, exist_ok=True)
+        Path(file).write_bytes(data)
     _write_if_changed(path, old, library.merge_symbols(old, changed, list(bases)))
     _register(Path("sym-lib-table"), library.EMPTY_TABLE, name, path)
     if any(outcome.draft for outcome in outcomes):
@@ -335,19 +338,43 @@ def _head(path: Path) -> str:
 
 
 def _status(
-    path: Path, present: str | None, entry: library.Entry, force: bool
-) -> tuple[library.Status, list[str]]:
+    part: jlc.Part,
+    path: Path,
+    present: str | None,
+    entry: library.Entry,
+    force: bool,
+    users: list[str],
+) -> tuple[library.Status, list[str], dict[PurePath, bytes]]:
     old = {file: _read(file) for file in entry.files}
-    differ = [
-        f"{file.as_posix()} is different"
-        for file in old
-        if old[file] not in (None, entry.files[file])
-    ]
-    if present not in (None, entry.symbol):
-        differ.insert(0, f'{path} already has a different "{entry.name}"')
-    if differ:
-        return ("replaced" if force else "kept"), differ
-    return ("added" if present is None or None in old.values() else "unchanged"), []
+    stale = [file for file, data in old.items() if data not in (None, entry.files[file])]
+    if stale and force and users:
+        sys.exit(
+            f"jlcpick: {part.lcsc}: --force would rewrite {stale[0].as_posix()}, which "
+            f"{', '.join(users)} also use; nothing written. Delete the file to have add "
+            "write it again for all of them, or leave it as is"
+        )
+    notes = []
+    if present in (None, entry.symbol):
+        status: library.Status = "unchanged" if present and None not in old.values() else "added"
+    elif force:
+        status = "replaced"
+    else:
+        status = "kept"
+        notes.append(f'{path} already has a different "{entry.name}", kept; --force replaces it')
+    if status != "kept" and force and stale and present is not None:
+        status = "replaced"
+    if not force:
+        notes += [
+            f"kept {file.as_posix()}, it differs from the EasyEDA conversion; --force rewrites it"
+            for file in stale
+        ]
+    if status == "kept":
+        return status, notes, {}
+    return (
+        status,
+        notes,
+        {f: d for f, d in entry.files.items() if old[f] is None or (f in stale and force)},
+    )
 
 
 def _refuse_clashes(parts: list[jlc.Part], entries: list[library.Entry]) -> None:
@@ -357,7 +384,7 @@ def _refuse_clashes(parts: list[jlc.Part], entries: list[library.Entry]) -> None
         if entry.name in symbols:
             sys.exit(
                 f"jlcpick: {symbols[entry.name]} and {part.lcsc} both make the symbol "
-                f'"{entry.name}"; add one of them at a time'
+                f'"{entry.name}", and a library has one symbol per name; add only the one you want'
             )
         symbols[entry.name] = part.lcsc
         for file, data in entry.files.items():
@@ -365,7 +392,7 @@ def _refuse_clashes(parts: list[jlc.Part], entries: list[library.Entry]) -> None
             if other != data:
                 sys.exit(
                     f"jlcpick: {first} and {part.lcsc} both make {file.as_posix()}, differently; "
-                    "add one of them at a time"
+                    "add only one of them, the other would get this footprint, and draw it by hand"
                 )
 
 

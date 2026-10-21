@@ -369,8 +369,10 @@ def test_add_keeps_an_edited_footprint_unless_forced(capsys: pytest.CaptureFixtu
 
     assert (path.read_text(), LIBRARY.read_text()) == edited
     assert capsys.readouterr().err == (
-        f'jlcpick: C2988369: lib/board.kicad_sym already has a different "{USB_C}"; '
-        f"lib/board.pretty/{USB_C_FOOTPRINT}.kicad_mod is different, kept; --force replaces it\n"
+        f'jlcpick: C2988369: lib/board.kicad_sym already has a different "{USB_C}", kept; '
+        "--force replaces it\n"
+        f"jlcpick: C2988369: kept lib/board.pretty/{USB_C_FOOTPRINT}.kicad_mod, "
+        "it differs from the EasyEDA conversion; --force rewrites it\n"
     )
 
     run("add", "C2988369", "--force")
@@ -400,7 +402,7 @@ def test_add_refuses_two_codes_whose_footprints_differ_under_one_name(
 
     assert exit_info.value.code == (
         "jlcpick: C2988369 and C399938 both make lib/board.pretty/SAME.kicad_mod, differently; "
-        "add one of them at a time"
+        "add only one of them, the other would get this footprint, and draw it by hand"
     )
     assert not Path("lib").exists()
 
@@ -539,7 +541,8 @@ def test_add_refuses_two_codes_that_make_the_same_symbol() -> None:
         main(["add", "C25744", "C9999999"])
 
     assert exit_info.value.code == (
-        f'jlcpick: C25744 and C9999999 both make the symbol "{R_10K}"; add one of them at a time'
+        f'jlcpick: C25744 and C9999999 both make the symbol "{R_10K}", '
+        "and a library has one symbol per name; add only the one you want"
     )
     assert not LIBRARY.exists()
 
@@ -633,3 +636,45 @@ def test_add_checks_the_pads_against_the_root_of_a_symbol_with_two_parents(
 
     assert str(exit_info.value.code).startswith("jlcpick: Diode_THT:D_DO-41")
     assert "no pad for pin 2" in str(exit_info.value.code)
+
+
+def test_add_writes_a_new_symbol_and_keeps_the_footprint_the_user_changed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run("add", "C2988369")
+    path = Path(f"lib/board.pretty/{USB_C_FOOTPRINT}.kicad_mod")
+    path.write_text(path.read_text().replace("(layer F.SilkS)", "(layer B.SilkS)"))
+    saved = path.read_text()
+    monkeypatch.setattr("jlcpick.sources.easyeda.package", lambda raw: USB_C_FOOTPRINT)
+    capsys.readouterr()
+
+    run("add", "C399938", "--json")
+
+    captured = capsys.readouterr()
+    assert [(o["lcsc"], o["status"]) for o in json.loads(captured.out)] == [("C399938", "added")]
+    assert path.read_text() == saved
+    assert "USB Connectors SMD - 918-118A2021Y40006" in library.symbols(LIBRARY.read_text())
+    assert (
+        f"kept {path.as_posix()}, it differs from the EasyEDA conversion; --force" in captured.err
+    )
+
+
+def test_add_force_refuses_to_rewrite_a_footprint_another_symbol_uses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run("add", "C2988369")
+    monkeypatch.setattr("jlcpick.sources.easyeda.package", lambda raw: USB_C_FOOTPRINT)
+    before = {p: p.read_bytes() for p in Path("lib").rglob("*") if p.is_file()}
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["add", "C399938", "--force"])
+
+    assert "also use; nothing written" in str(exit_info.value.code)
+    assert USB_C in str(exit_info.value.code)
+    assert {p: p.read_bytes() for p in Path("lib").rglob("*") if p.is_file()} == before
+
+
+def test_add_force_calls_a_new_symbol_added(capsys: pytest.CaptureFixture[str]) -> None:
+    run("add", "C25744", "--force")
+
+    assert capsys.readouterr().out.split()[1] == "added"

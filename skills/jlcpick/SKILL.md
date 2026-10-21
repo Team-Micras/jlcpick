@@ -67,15 +67,15 @@ jlcpick takes the first of these that fits the part:
    and STEP. The footprint goes to `lib/<project>.pretty/<EasyEDA package>.kicad_mod`, registered
    in the project's `fp-lib-table`; the STEP to `lib/<project>.3dshapes/`, referenced from the
    footprint as `${KIPRJMOD}/lib/<project>.3dshapes/…`. jlcpick places the STEP where EasyEDA
-   does; easyeda2kicad alone leaves it 1.05 mm off on the USB-C C2988369. The output marks the part `draft: review
-   footprint and 3D`: tell the user to check pads, silkscreen, courtyard and 3D before ordering.
+   does; easyeda2kicad alone leaves it 1.05 mm off on the USB-C C2988369. The output marks the
+   part `draft: review footprint and 3D`: tell the user to check pads, silkscreen, courtyard and 3D before ordering.
    Parts with the same EasyEDA package share one footprint. KiCad reformats a converted symbol
    when it saves the library, so a later `add` of that part says `kept`.
 
 | Flag | Meaning |
 |---|---|
 | `--lib DIR` | folder of the library, default `lib` |
-| `--force` | replace a symbol of the same name, or a footprint or STEP of the same name, that differs; without it the library's version is kept and a warning says so |
+| `--force` | replace a symbol of the same name that differs, and a footprint or STEP of the same name that differs unless another symbol of the library uses it; without it the library's version is kept and a warning says so |
 | `--json` | print JSON |
 
 The JSON is a list, one object per code:
@@ -84,7 +84,7 @@ The JSON is a list, one object per code:
 |---|---|
 | `lcsc` | the code |
 | `symbol`, `footprint` | the symbol's name in the library and its footprint (`<project>:<name>` for a draft) |
-| `status` | `added`; `unchanged`, already there as is; `replaced`, with `--force`; `kept`, a different symbol, footprint or STEP of that name stays |
+| `status` | `added`; `unchanged`, already there as is; `replaced`, with `--force`; `kept`, a different symbol of that name stays |
 | `draft` | `true` when converted from EasyEDA: review its footprint and 3D |
 
 Running `add` again changes no byte. jlcpick finds KiCad 10's libraries where KiCad installs them
@@ -92,8 +92,11 @@ Running `add` again changes no byte. jlcpick finds KiCad 10's libraries where Ki
 
 Warnings (stderr, exit 0):
 
-- `CODE: <library> already has a different "<symbol>"; <file> is different, kept`: someone
-  edited the part; `--force` replaces it with jlcpick's version.
+- `CODE: <library> already has a different "<symbol>", kept`: someone edited the symbol; `--force`
+  replaces it with jlcpick's version.
+- `CODE: kept <file>, it differs from the EasyEDA conversion`: someone edited the footprint or
+  STEP, or another part of the same package made it differently. The symbol is written anyway,
+  pointing at that file. `--force` rewrites the file.
 - `sym-lib-table maps <project> to <uri>, but add wrote <uri>` (or `fp-lib-table`): the table
   points the project's library at another file; fix the table, jlcpick leaves it as is.
 - `CODE: EasyEDA has no STEP model`: the draft has a footprint without 3D.
@@ -104,8 +107,12 @@ Errors (exit 1, nothing written):
   convert`: draw the part by hand.
 - `<library> already has a <base> wired differently from KiCad's`: a base symbol in the library
   (`D`, `Q_NMOS_GSD`…) has other pin numbers than KiCad's; restore it from KiCad's library.
-- `CODE1 and CODE2 both make the symbol "<name>"` (same MPN under two codes), or `both make
-  <file>, differently` (two EasyEDA footprints with one name): add one of them at a time.
+- `CODE1 and CODE2 both make the symbol "<name>"` (same MPN under two codes): add only the one
+  you want. `both make <file>, differently` (two EasyEDA footprints with one name): add only one;
+  the other would get that footprint, so draw it by hand.
+- `CODE: --force would rewrite <file>, which <symbols> also use`: rewriting it would change
+  those symbols' footprint too. Delete the file to have `add` write it again for all of them, or
+  leave it as is.
 - `<library>: empty or cut off, its parentheses do not balance`: the library or a table is
   damaged; restore it from git.
 - `CODE: EasyEDA's footprint has no pad for pin N of its symbol`: EasyEDA's data is wrong.
