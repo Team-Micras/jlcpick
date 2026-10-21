@@ -222,8 +222,9 @@ def _fees(report: Report) -> str:
         f"setup {_times(sides, schedule.setup, fees.setup_usd)}",
         f"stencil {_times(sides, schedule.stencil, fees.stencil_usd)}",
         f"{feeder} {len(fees.feeder_parts)} × {fees.feeder_each_usd:.2f} = {fees.feeder_usd:.2f}",
-        f"x-ray {fees.xray_units} × {fees.xray_each_usd:.2f} = {fees.xray_usd:.2f}",
     ]
+    if fees.xray_units:
+        parts.append(f"x-ray {fees.xray_units} × {fees.xray_each_usd:.2f} = {fees.xray_usd:.2f}")
     if report.assembly == "standard":
         parts.append(f"handling {fees.handling_usd:.2f}")
     return " · ".join(parts)

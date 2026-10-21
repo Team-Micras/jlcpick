@@ -246,6 +246,17 @@ def test_bom_x_ray_charges_leadless_packages(capsys: pytest.CaptureFixture[str])
     assert (report["fees"]["xray_units"], report["fees"]["xray_usd"]) == (5, 8.2)
 
 
+def test_bom_text_names_the_x_ray_fee_only_when_there_is_one(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run("bom", csv("Refs,LCSC\nC1,C25744\n"), "--no-swaps")
+    without = capsys.readouterr().out
+    run("bom", csv("Refs,LCSC\nIC1,C5271073\n"), "--no-swaps")
+
+    assert "x-ray" not in without
+    assert "x-ray 5 × 1.64 = 8.20" in capsys.readouterr().out
+
+
 def test_bom_standard_on_a_board_with_a_bottom_part_pays_two_sides(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
