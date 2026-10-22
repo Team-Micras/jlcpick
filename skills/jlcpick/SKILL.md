@@ -226,6 +226,11 @@ copper, white silkscreen (black on a white mask). `--color` picks the solder mas
 (default), `purple`, `red`, `yellow`, `blue`, `white` or `black`; colors other than green cost
 more. Shipping, taxes and customs are not included.
 
+JLC does not check the combination of layers, thickness and size, and quotes boards it cannot
+make. Warnings on stderr: the file's thickness more than 0.1 mm from the option priced, and an
+outline drawn inside a footprint (not measured). The text lists the five extended parts that
+weigh most (feeder fee plus the units charged beyond those placed) and leaves the rest to `bom`.
+
 The JSON:
 
 | Field | Meaning |
@@ -249,7 +254,7 @@ The JSON:
 
 | Field | Meaning |
 |---|---|
-| `parts` | extended lines, preferred included |
+| `parts` | extended lines, preferred included (the text adds how many are preferred) |
 | `feeder_usd` | feeder fees of extended parts; 0 in Standard, where basic parts pay it too |
 | `extra_units_usd` | units JLC charges beyond those placed: attrition and minimums |
 | `usd`, `share_pct` | their sum, and its percentage of `total_usd` |

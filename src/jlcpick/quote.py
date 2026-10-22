@@ -74,12 +74,22 @@ def quote(fabrication: Fabrication, price: BoardPrice, color: str, pcba: bom.Rep
     )
 
 
+def _weight(line: bom.Line, feeder_each_usd: float) -> float:
+    fee = feeder_each_usd if line.feeder_fee else 0.0
+    return round(fee + (line.charged - line.need) * line.unit_usd, 2)
+
+
 def text(quote: Quote) -> str:
     """The quote as the terminal shows it."""
     board, pcba, extended = quote.board, quote.pcba, quote.extended
     thickness = f"{board.thickness_mm:.1f} mm"
     if board.kicad_thickness_mm != board.thickness_mm:
         thickness += f" (board file {board.kicad_thickness_mm:g})"
+    feeder_each = 0.0 if pcba.assembly == "standard" else pcba.fees.feeder_each_usd
+    extended_lines = [line for line in pcba.lines if line.tier == "extended"]
+    heaviest = sorted(extended_lines, key=lambda line: -_weight(line, feeder_each))[:5]
+    heaviest = [line for line in heaviest if _weight(line, feeder_each) > 0]
+    preferred = sum(line.preferred for line in extended_lines)
     left_out = "shipping, taxes and customs"
     if pcba.assembly == "standard":
         left_out += "; packing, fixture and the per-board batch fee of Standard"
@@ -96,7 +106,17 @@ def text(quote: Quote) -> str:
             f"{quote.total_usd / quote.qty:.2f}",
             f"  extended   US$ {extended.usd:.2f}, {extended.share_pct:.1f} % of the total",
             f"             feeder {extended.feeder_usd:.2f} + units beyond those placed "
-            f"{extended.extra_units_usd:.2f}, on {extended.parts} extended parts",
+            f"{extended.extra_units_usd:.2f}, on {extended.parts} extended parts "
+            f"({preferred} preferred)",
+            *[
+                f"             {line.lcsc:<9} US$ {_weight(line, feeder_each):5.2f}  {line.mpn}"
+                for line in heaviest
+            ],
+            *(
+                [f"             and {extended.parts - len(heaviest)} more: jlcpick bom"]
+                if extended.parts > len(heaviest)
+                else []
+            ),
             "",
             f"  not included: {left_out}",
             "  parts, fees and swaps: jlcpick bom",

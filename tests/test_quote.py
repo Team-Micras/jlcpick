@@ -145,6 +145,54 @@ def test_quote_measures_an_outline_whose_arc_bulges_past_its_ends(
     assert (pcb["stencilPly"], pcb["adornColor"]) == ("1.6", "White")
 
 
+def test_quote_measures_a_polygon_outline_with_an_arc_corner(
+    sent: list[dict[str, Any]],
+) -> None:
+    outline = (
+        "(gr_poly (pts (xy 0 0) (xy 40 0) (arc (start 40 0) (mid 50 10) (end 40 20))"
+        ' (xy 0 20)) (layer "Edge.Cuts"))'
+    )
+
+    run("quote", "bom.csv", "--pcb", board(outline))
+
+    pcb = sent[0]["pcbGoodsRequest"]
+    assert (pcb["stencilWidth"], pcb["stencilLength"]) == (50.0, 20.0)
+
+
+def test_quote_warns_when_jlc_prices_a_board_thicker_than_its_file(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outline = '(gr_rect (start 0 0) (end 40 20) (layer "Edge.Cuts"))'
+
+    run("quote", "bom.csv", "--pcb", board(outline, thickness="2.4"))
+
+    assert "the board file is 2.4 mm thick; JLC priced 2.0 mm" in capsys.readouterr().err
+
+
+def test_quote_stays_quiet_about_a_thickness_within_0_1_mm_of_the_option(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outline = '(gr_rect (start 0 0) (end 40 20) (layer "Edge.Cuts"))'
+
+    run("quote", "bom.csv", "--pcb", board(outline, thickness="1.5"))
+
+    assert "thick" not in capsys.readouterr().err
+
+
+def test_quote_warns_of_an_outline_drawn_inside_a_footprint(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outline = (
+        '(gr_rect (start 0 0) (end 40 20) (layer "Edge.Cuts"))'
+        ' (footprint "Conn:USB" (layer "F.Cu") (property "Reference" "J1")'
+        ' (fp_line (start 0 0) (end 9 9) (layer "Edge.Cuts")))'
+    )
+
+    run("quote", "bom.csv", "--pcb", board(outline))
+
+    assert "the outline drawn inside J1 is not measured" in capsys.readouterr().err
+
+
 def test_quote_exits_1_on_a_board_without_an_outline() -> None:
     with pytest.raises(SystemExit) as exit_info:
         main(["quote", "bom.csv", "--pcb", board("")])
@@ -156,7 +204,13 @@ def test_quote_exits_1_when_the_calculator_fails(
     monkeypatch: pytest.MonkeyPatch, network: Callable[..., None]
 ) -> None:
     answer = b'{"success": false, "code": 500, "message": "System error.", "data": null}'
-    monkeypatch.setattr("jlcpick.sources.http.urlopen", lambda request, timeout: io.BytesIO(answer))
+
+    def urlopen(request: Request, timeout: float) -> io.BytesIO:
+        return (
+            io.BytesIO(answer) if request.host == "cart.jlcpcb.com" else recorded(request, timeout)
+        )
+
+    monkeypatch.setattr("jlcpick.sources.http.urlopen", urlopen)
 
     with pytest.raises(SystemExit) as exit_info:
         main([*MAINBOARD])

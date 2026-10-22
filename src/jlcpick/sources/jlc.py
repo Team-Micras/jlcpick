@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from jlcpick.board import Fabrication
 from jlcpick.sources.http import SourceError, fetch_json
 
 SEARCH_PAGE = 50
@@ -79,18 +78,20 @@ class BoardPrice:
     thickness_mm: float
 
 
-def board_price(board: Fabrication, qty: int, color: str) -> BoardPrice:
+def board_price(
+    layers: int, width_mm: float, length_mm: float, thickness_mm: float, qty: int, color: str
+) -> BoardPrice:
     """Price ``qty`` bare boards as JLCPCB's order page does, with its defaults: HASL, 1 oz copper.
 
     ``color`` is one of `COLORS`, the solder mask; JLC prices a color it does not know as green.
     The calculator refuses a request without any service option, so it gets `NO_BARCODE`, the
     page's default.
     """
-    thickness = min(THICKNESSES_MM, key=lambda option: abs(option - board.thickness_mm))
+    thickness = min(THICKNESSES_MM, key=lambda option: abs(option - thickness_mm))
     pcb = {
-        "stencilLayer": board.layers,
-        "stencilWidth": board.width_mm,
-        "stencilLength": board.length_mm,
+        "stencilLayer": layers,
+        "stencilWidth": width_mm,
+        "stencilLength": length_mm,
         "stencilPly": f"{thickness:.1f}",
         "stencilCounts": qty,
         "stencilNumber": 1,
@@ -111,8 +112,10 @@ def board_price(board: Fabrication, qty: int, color: str) -> BoardPrice:
             raise SourceError(f"JLCPCB's board calculator failed: {response.get('message')}")
         data = response["data"]
         build_time = next(date["name"] for date in data["achieveDateList"] if date["checked"])
-        return BoardPrice(float(data["orderCountTolls"]["dummyMoney"]), build_time, thickness)
-    except (KeyError, TypeError, AttributeError, StopIteration) as error:
+        return BoardPrice(
+            round(float(data["orderCountTolls"]["dummyMoney"]), 2), build_time, thickness
+        )
+    except (KeyError, TypeError, AttributeError, StopIteration, ValueError) as error:
         raise SourceError("JLCPCB's board calculator answered in an unexpected format") from error
 
 

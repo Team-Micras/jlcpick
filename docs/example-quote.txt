@@ -6,7 +6,13 @@ MicrasMainBoard  ×5  Economic
   assembly   US$ 362.82   parts 254.55 + fees 108.27, fees as of 2026-09-09
   total      US$ 370.82   per board US$ 74.16
   extended   US$ 76.54, 20.6 % of the total
-             feeder 73.68 + units beyond those placed 2.86, on 39 extended parts
+             feeder 73.68 + units beyond those placed 2.86, on 39 extended parts (12 preferred)
+             C154679   US$  3.46  LR2512-22R040F4
+             C2994645  US$  3.41  HoLLR2512-3W-50mR-1%
+             C24253    US$  3.33  CJA1117B-3.3
+             C22371529 US$  3.31  WS2815C-2020-4P
+             C778165   US$  3.28  GT-TC048B-H025-L1
+             and 34 more: jlcpick bom
 
   not included: shipping, taxes and customs
   parts, fees and swaps: jlcpick bom

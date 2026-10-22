@@ -132,8 +132,24 @@ def _bom(args: argparse.Namespace) -> None:
 
 def _quote(args: argparse.Namespace) -> None:
     fabrication = board.fabrication(_text(args.pcb))
-    price = jlc.board_price(fabrication, args.qty, args.color)
-    order = quote.quote(fabrication, price, args.color, _assembly(args, with_swaps=False))
+    pcba = _assembly(args, with_swaps=False)
+    price = jlc.board_price(
+        fabrication.layers,
+        fabrication.width_mm,
+        fabrication.length_mm,
+        fabrication.thickness_mm,
+        args.qty,
+        args.color,
+    )
+    if round(abs(price.thickness_mm - fabrication.thickness_mm), 2) > 0.1:
+        print(
+            f"jlcpick: the board file is {fabrication.thickness_mm:g} mm thick; JLC priced "
+            f"{price.thickness_mm:.1f} mm",
+            file=sys.stderr,
+        )
+    for reference in fabrication.unmeasured:
+        print(f"jlcpick: the outline drawn inside {reference} is not measured", file=sys.stderr)
+    order = quote.quote(fabrication, price, args.color, pcba)
     if args.json:
         print(json.dumps(asdict(order), indent=2, ensure_ascii=False))
     else:

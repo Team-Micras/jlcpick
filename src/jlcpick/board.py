@@ -33,12 +33,14 @@ class Fabrication:
     length_mm: float
     layers: int
     thickness_mm: float
+    unmeasured: tuple[str, ...] = ()
 
 
 def fabrication(pcb: str) -> Fabrication:
     """Read the board's size from its Edge.Cuts drawings, and its copper layers and thickness.
 
-    Only the board's own drawings count: Edge.Cuts inside a footprint is not read.
+    Only the board's own drawings count: Edge.Cuts inside a footprint is not measured, and the
+    references of the footprints that have some are in ``unmeasured``.
     """
     board = _parse(pcb)
     nodes = [node for node in board if isinstance(node, list) and node]
@@ -63,6 +65,14 @@ def fabrication(pcb: str) -> Fabrication:
         length_mm=round(max(ys) - min(ys), 2),
         layers=len(copper),
         thickness_mm=float(thickness),
+        unmeasured=tuple(
+            reference
+            for node in nodes
+            if node[0] == "footprint"
+            for children in [[c for c in node if isinstance(c, list) and c]]
+            if any(str(c[0]).startswith("fp_") and ["layer", "Edge.Cuts"] in c for c in children)
+            if (reference := _reference(children))
+        ),
     )
 
 
@@ -78,15 +88,8 @@ def footprints(pcb: str) -> dict[str, Footprint]:
         if not (isinstance(node, list) and node[:1] == ["footprint"]):
             continue
         children = [child for child in node if isinstance(child, list) and child]
-        reference = next(
-            (
-                c[2]
-                for c in children
-                if len(c) > 2 and c[:2] in (["property", "Reference"], ["fp_text", "reference"])
-            ),
-            "",
-        )
-        if not isinstance(reference, str) or not reference:
+        reference = _reference(children)
+        if not reference:
             continue
         pads = [c for c in children if c[0] == "pad" and len(c) > 2 and c[2] in _SOLDERED]
         attributes = next((c[1:] for c in children if c[0] == "attr"), [])
@@ -101,6 +104,18 @@ def footprints(pcb: str) -> dict[str, Footprint]:
     return found
 
 
+def _reference(children: list[Sexpr]) -> str:
+    reference = next(
+        (
+            c[2]
+            for c in children
+            if len(c) > 2 and c[:2] in (["property", "Reference"], ["fp_text", "reference"])
+        ),
+        "",
+    )
+    return reference if isinstance(reference, str) else ""
+
+
 def _extent(shape: Sexpr) -> list[tuple[float, float]]:
     at = {str(c[0]): _xy(c) for c in shape if isinstance(c, list) and c[0] in _POINTS}
     if shape[0] == "gr_circle":
@@ -109,13 +124,21 @@ def _extent(shape: Sexpr) -> list[tuple[float, float]]:
     if shape[0] == "gr_arc":
         return [at["start"], at["end"], *_arc_extremes(at["start"], at["mid"], at["end"])]
     corners = [
-        _xy(xy)
+        point
         for c in shape
         if isinstance(c, list) and c[0] == "pts"
-        for xy in c[1:]
-        if isinstance(xy, list)
+        for item in c[1:]
+        if isinstance(item, list)
+        for point in _pts_item(item)
     ]
     return [*at.values(), *corners]
+
+
+def _pts_item(item: Sexpr) -> list[tuple[float, float]]:
+    if item[0] != "arc":
+        return [_xy(item)]
+    at = {str(c[0]): _xy(c) for c in item if isinstance(c, list)}
+    return [at["start"], at["end"], *_arc_extremes(at["start"], at["mid"], at["end"])]
 
 
 def _xy(node: Sexpr) -> tuple[float, float]:
