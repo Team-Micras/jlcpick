@@ -6,11 +6,14 @@ import json
 import logging
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from dataclasses import asdict, replace
 from pathlib import Path, PurePath
 
-from jlcpick import __version__, board, bom, bom_input, library, swaps
+from jlcpick import __version__, board, bom, bom_input, fab, library, swaps
 from jlcpick.bom_input import BomError
 from jlcpick.sources import easyeda, http, jlc
 from jlcpick.sources.http import SourceError
@@ -29,6 +32,10 @@ KICAD_10 = {
     "symbols": ("Device.kicad_sym", '(generator_version "10.0")'),
     "footprints": ("Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod", "(version 2026"),
 }
+NO_KIKIT = (
+    "jlcpick: fab needs KiKit and KiCad's pcbnew: install jlcpick[fab] in a Python that imports "
+    "pcbnew, or run fab in the kicad/kicad:10.0.7 Docker image as the README shows"
+)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -61,6 +68,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     add.add_argument("--force", action="store_true", help="replace a symbol of the same name")
     add.add_argument("--json", action="store_true", help="print JSON")
+    files = commands.add_parser("fab", help="write JLCPCB's Gerbers, BOM and CPL with KiKit")
+    files.add_argument("pcb", type=Path, help="the .kicad_pcb, with its .kicad_sch next to it")
+    files.add_argument("--exclude", type=_designators, action="extend", default=[], metavar="U1,U3")
+    files.add_argument(
+        "--out", type=Path, default=Path("jlcpcb"), metavar="DIR", help="output folder (jlcpcb)"
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.ERROR, format="jlcpick: %(message)s")
     try:
@@ -68,6 +81,8 @@ def main(argv: list[str] | None = None) -> None:
             _get(args.codes, args.json, args.out)
         elif args.command == "add":
             _add(args.codes, args.lib, args.force, args.json)
+        elif args.command == "fab":
+            _fab(args.pcb, set(args.exclude), args.out)
         else:
             _bom(args)
     except (SourceError, BomError, OSError) as error:
@@ -114,6 +129,95 @@ def _bom(args: argparse.Namespace) -> None:
             f"jlcpick: extended parts paying the feeder fee: {', '.join(paying)}", file=sys.stderr
         )
         sys.exit(3)
+
+
+def _fab(pcb: Path, exclude: set[str], out: Path) -> None:
+    placed = board.footprints(_text(pcb))
+    unknown = exclude - placed.keys()
+    if unknown:
+        raise BomError(f"--exclude: not on the board: {', '.join(sorted(unknown))}")
+    stock = {p.stem for p in _kicad_dir("KICAD10_FOOTPRINT_DIR", "footprints").glob("*.pretty")}
+    table, unchecked = fab.corrections((f.name for f in placed.values()), stock)
+    fields = _lcsc_fields(pcb)
+    out.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=out) as scratch:
+        work = Path(scratch)
+        _kikit(pcb, fields, table, work)
+        listed, placements = _text(work / "bom.csv"), _text(work / "pos.csv")
+        lines = bom_input.read(listed)
+        in_bom = {d for line in lines for d in line.designators}
+        if lost := in_bom - placed.keys():
+            raise BomError(f"KiKit's BOM lists {', '.join(sorted(lost))}, not found on the board")
+        kept = bom_input.assembled(lines, exclude & in_bom)
+        os.replace(work / "gerbers.zip", out / "gerbers.zip")
+    keep = {d for line in kept if line.lcsc for d in line.designators}
+    uncoded = sorted(d for line in kept if not line.lcsc for d in line.designators)
+    if uncoded:
+        print(f"jlcpick: no LCSC code, left out: {', '.join(uncoded)}", file=sys.stderr)
+    (out / "bom.csv").write_text(fab.only(listed, keep), encoding="utf-8", newline="")
+    (out / "pos.csv").write_text(fab.only(placements, keep), encoding="utf-8", newline="")
+    codes = {line.lcsc for line in kept if line.lcsc}
+    print(f"{out}: gerbers.zip, bom.csv, pos.csv; {len(keep)} parts, {len(codes)} LCSC codes")
+    through_hole = {d for d in keep if placed[d].tht and placed[d].name.partition(":")[0] in stock}
+    problems = [
+        f"{label}: {', '.join(sorted(names))}"
+        for label, names in (
+            (
+                "no checked rotation for KiCad's footprint, check it in JLC's preview",
+                {
+                    f"{d} ({placed[d].name})"
+                    for d in keep - through_hole
+                    if placed[d].name in unchecked
+                },
+            ),
+            (
+                "KiCad's through-hole footprint is placed by its pin 1, check its position in "
+                "JLC's preview",
+                {f"{d} ({placed[d].name})" for d in through_hole},
+            ),
+        )
+        if names
+    ]
+    for problem in problems:
+        print(f"jlcpick: {problem}", file=sys.stderr)
+    if problems:
+        sys.exit(3)
+
+
+def _lcsc_fields(pcb: Path) -> set[str]:
+    schematic = pcb.with_suffix(".kicad_sch")
+    if not schematic.exists():
+        raise BomError(f"{schematic} not found; fab reads the LCSC codes from it")
+    fields = {
+        name
+        for sheet in pcb.parent.glob("*.kicad_sch")
+        for name in re.findall(r'\(property "([^"]+)"', _text(sheet))
+        if name.lower() in bom_input.COLUMNS["lcsc"]
+    }
+    if not fields:
+        raise BomError(
+            f"{schematic}: no symbol field holds LCSC codes; name it one of: "
+            + ", ".join(bom_input.COLUMNS["lcsc"])
+        )
+    return fields
+
+
+def _kikit(pcb: Path, fields: set[str], corrections: str, out: Path) -> None:
+    here = shutil.which("kikit", path=str(Path(sys.executable).parent))
+    kikit = here or shutil.which("kikit")
+    if kikit is None:
+        sys.exit(NO_KIKIT)
+    schematic = pcb.with_suffix(".kicad_sch")
+    command = [kikit, "fab", "jlcpcb", "--no-drc", "--assembly", "--schematic", str(schematic)]
+    command += ["--field", ",".join(sorted(fields))]
+    if corrections:
+        (out / "corrections.csv").write_text(corrections, encoding="utf-8")
+        command += ["--correctionpatterns", str(out / "corrections.csv")]
+    done = subprocess.run([*command, str(pcb), str(out)], capture_output=True, text=True)
+    if "No module named 'pcbnew'" in done.stderr:
+        sys.exit(NO_KIKIT)
+    if done.returncode != 0:
+        sys.exit(f"jlcpick: kikit failed:\n{done.stdout}{done.stderr}")
 
 
 def _text(path: Path) -> str:

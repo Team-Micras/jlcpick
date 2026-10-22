@@ -55,6 +55,31 @@ feeder fee. Fees come from JLC's
 [PCB Assembly Price](https://jlcpcb.com/help/article/pcb-assembly-price) page of 2026-09-09, and
 every report prints that date.
 
+Write the files of a JLCPCB order, `jlcpcb/gerbers.zip`, `jlcpcb/bom.csv` and `jlcpcb/pos.csv`:
+
+```sh
+jlcpick fab board.kicad_pcb --exclude U1
+```
+
+`fab` runs [KiKit](https://github.com/yaqwsx/KiKit)'s `kikit fab jlcpcb` on the board and the
+`.kicad_sch` next to it, reading the LCSC code from the symbol field named `LCSC`,
+`SUPPLIER PART` or another LCSC column name `bom` reads. Parts marked DNP, without a code, or in
+`--exclude` stay out of the BOM and the CPL. Footprints from KiCad's own libraries get the rotation
+corrections JLC needs; the project's own footprints and those converted from EasyEDA are already
+in JLC's orientation. A stock footprint with no known correction, or a stock through-hole one,
+exits 3 after writing the files: check that part in JLC's preview.
+
+KiKit needs KiCad's Python (`pcbnew`), so `fab` runs where both are: install `jlcpick[fab]` in a
+venv made with `--system-site-packages` from KiCad's Python, or use KiCad's Docker image from the
+board's folder:
+
+```sh
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$(command -v uv)":/usr/local/bin/uv:ro \
+  -v /path/to/jlcpick:/jlcpick:ro -v "$PWD":/work -w /work kicad/kicad:10.0.7 sh -c \
+  'uv venv -q --system-site-packages --python /usr/bin/python3 /tmp/v &&
+   VIRTUAL_ENV=/tmp/v uv pip install -q "/jlcpick[fab]" && /tmp/v/bin/jlcpick fab board.kicad_pcb'
+```
+
 jlcpick is not on PyPI yet, so these run from a clone (`--from .`). Once it is published they
 become `uvx jlcpick get C25744`.
 
@@ -77,6 +102,11 @@ today's fees.
 `add` copies base symbols from the [KiCad libraries](https://gitlab.com/kicad/libraries)
 (CC-BY-SA 4.0 with an exception for designs that use them); `tests/fixtures/kicad/` holds the
 symbols and footprints it uses, from KiCad 10.0.7.
+
+`fab` runs [KiKit](https://github.com/yaqwsx/KiKit) (MIT). Its rotation corrections,
+`src/jlcpick/rotations.csv`, are the `cpl_rotations_db.csv` of
+[JLCKicadTools](https://github.com/matthewlai/JLCKicadTools) by Matthew Lai and contributors
+(GPL-3.0; the text is in `LICENSES/GPL-3.0.txt`). jlcpick translates it to KiKit's format.
 
 Symbol, footprint and 3D conversion by [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py)
 (AGPL-3.0).

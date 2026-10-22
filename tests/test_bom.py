@@ -280,6 +280,22 @@ def test_bom_standard_on_a_board_with_a_bottom_part_pays_two_sides(
     assert (report["fees"]["smt_joints"], report["fees"]["manual_joints"]) == (4, 2)
 
 
+def test_bom_reads_the_designators_of_a_kicad_7_board(capsys: pytest.CaptureFixture[str]) -> None:
+    Path("board.kicad_pcb").write_text(
+        "(kicad_pcb (version 20221018)\n"
+        ' (footprint "R" (layer "F.Cu") (fp_text reference "R1" (at 0 0))'
+        ' (pad "1" smd) (pad "2" smd))\n'
+        ' (footprint "J" (layer "F.Cu") (fp_text reference "J1" (at 0 0)) (attr through_hole)'
+        ' (pad "1" thru_hole) (pad "2" thru_hole))\n'
+        ")\n"
+    )
+    path = csv("Refs,LCSC\nR1,C25744\nJ1,C158050\n")
+
+    report = bom_json(capsys, "bom", path, "--pcb", "board.kicad_pcb", "--qty", "1")
+
+    assert (report["fees"]["smt_joints"], report["fees"]["manual_joints"]) == (2, 2)
+
+
 def order_lines() -> list[tuple[str, str, int, float]]:
     sheet = xlrd.open_workbook(FIXTURES / "10973279A_bom.xls").sheet_by_index(0)
     return [
