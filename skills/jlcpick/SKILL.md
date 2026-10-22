@@ -36,8 +36,8 @@ jlcpick get C25744 --out parts
 ```
 
 Writes `parts/C25744.kicad_mod` and `parts/C25744.step`. The footprint is converted from EasyEDA
-and is a draft: tell the user to review it. A missing STEP or missing EasyEDA data is a warning on
-stderr, not a failure.
+and is a draft: tell the user to review it. A missing or unreadable STEP, or missing EasyEDA data,
+is a warning on stderr, not a failure; without a STEP the footprint is saved without 3D.
 
 ## Add parts to the project library
 

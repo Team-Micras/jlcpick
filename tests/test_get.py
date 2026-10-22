@@ -73,6 +73,22 @@ def test_get_out_warns_when_easyeda_has_no_step(capsys: pytest.CaptureFixture[st
     assert capsys.readouterr().err == "jlcpick: C399938: EasyEDA has no STEP model\n"
 
 
+def test_get_out_saves_the_footprint_without_3d_when_the_step_cannot_be_read(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cache = Path(".jlcpick/cache")
+    cache.mkdir(parents=True)
+    (cache / "C2988369.step").write_bytes(b"DATA;\n")
+
+    run("get", "C2988369", "--out", "lib")
+
+    assert capsys.readouterr().err == (
+        "jlcpick: C2988369: STEP unreadable, footprint saved without 3D\n"
+    )
+    assert "(model " not in Path("lib/C2988369.kicad_mod").read_text()
+    assert sorted(p.name for p in Path("lib").iterdir()) == ["C2988369.kicad_mod"]
+
+
 def test_get_out_warns_when_easyeda_has_no_cad(capsys: pytest.CaptureFixture[str]) -> None:
     run("get", "C9900145630", "--out", "lib")
 

@@ -152,10 +152,16 @@ def _save_cad(code: str, out: Path) -> None:
         return
     out.mkdir(parents=True, exist_ok=True)
     step = out.resolve() / f"{code}.step"
-    (out / f"{code}.kicad_mod").write_text(easyeda.footprint(raw, step), encoding="utf-8")
     if raw.step is None:
         print(f"jlcpick: {code}: EasyEDA has no STEP model", file=sys.stderr)
-    else:
+    try:
+        text = easyeda.footprint(raw, step)
+    except easyeda.StepError:
+        print(f"jlcpick: {code}: STEP unreadable, footprint saved without 3D", file=sys.stderr)
+        raw = replace(raw, step=None)
+        text = easyeda.footprint(raw, step, with_model=False)
+    (out / f"{code}.kicad_mod").write_text(text, encoding="utf-8")
+    if raw.step is not None:
         step.write_bytes(raw.step)
 
 
