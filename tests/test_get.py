@@ -7,7 +7,7 @@ from urllib.error import URLError
 from urllib.request import Request
 
 import pytest
-from conftest import recorded, run
+from conftest import STEPS, recorded, run
 
 from jlcpick.cli import main
 from jlcpick.sources.jlc import Part
@@ -56,7 +56,12 @@ def test_get_out_saves_footprint_and_step(capsys: pytest.CaptureFixture[str]) ->
     footprint = Path("lib/C25744.kicad_mod").read_text()
     assert footprint.count("(pad ") == 2
     assert f'(model "{Path("lib").resolve()}/C25744.step"' in footprint
-    assert Path("lib/C25744.step").read_bytes().startswith(b"STEP ")
+    assert "(offset (xyz 0.000 -0.001 0.000))" in footprint
+    assert (
+        Path("lib/C25744.step").read_bytes()
+        == (STEPS / "026a4a15ab5c4a92ac0e421d6d013717.step").read_bytes()
+    )
+    assert '(property "LCSC Part" "C25744")' in footprint
     assert capsys.readouterr().err == ""
 
 
@@ -66,6 +71,22 @@ def test_get_out_warns_when_easyeda_has_no_step(capsys: pytest.CaptureFixture[st
     assert "(model " not in Path("lib/C399938.kicad_mod").read_text()
     assert not Path("lib/C399938.step").exists()
     assert capsys.readouterr().err == "jlcpick: C399938: EasyEDA has no STEP model\n"
+
+
+def test_get_out_saves_the_footprint_without_3d_when_the_step_cannot_be_read(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cache = Path(".jlcpick/cache")
+    cache.mkdir(parents=True)
+    (cache / "C2988369.step").write_bytes(b"DATA;\n")
+
+    run("get", "C2988369", "--out", "lib")
+
+    assert capsys.readouterr().err == (
+        "jlcpick: C2988369: STEP unreadable, footprint saved without 3D\n"
+    )
+    assert "(model " not in Path("lib/C2988369.kicad_mod").read_text()
+    assert sorted(p.name for p in Path("lib").iterdir()) == ["C2988369.kicad_mod"]
 
 
 def test_get_out_warns_when_easyeda_has_no_cad(capsys: pytest.CaptureFixture[str]) -> None:
