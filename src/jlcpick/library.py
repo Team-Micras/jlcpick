@@ -41,6 +41,7 @@ _TABLE_LIB = re.compile(
 )
 _PIN = re.compile(rf"\(name ({_STRING})|\(number ({_STRING})")
 _NOT_IN_NAMES = re.compile(r'[\x00-\x1f:/\\<>"*?|]|[ .](?=[ .]*$)')
+_WINDOWS_RESERVED = re.compile(r"(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?|\..*", re.IGNORECASE)
 _PAREN = re.compile(r"\s*\([^)]*\)")
 
 
@@ -156,8 +157,10 @@ def value(symbol: str, name: str) -> str:
 
 
 def safe_name(text: str) -> str:
-    """``text`` with the characters KiCad does not take in a symbol or footprint name as ``_``."""
-    return _NOT_IN_NAMES.sub("_", text)
+    """``text`` with the characters KiCad does not take in a symbol or footprint name as ``_``,
+    and ``_`` before a name Windows reserves (``CON``, ``NUL.txt``…) or one starting with a dot."""
+    safe = _NOT_IN_NAMES.sub("_", text)
+    return f"_{safe}" if _WINDOWS_RESERVED.fullmatch(safe) else safe
 
 
 def symbols(library: str) -> dict[str, str]:

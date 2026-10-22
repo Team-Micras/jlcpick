@@ -745,7 +745,19 @@ def test_add_goes_on_without_3d_when_the_step_cannot_be_read(
 
 @pytest.mark.parametrize(
     ("text", "safe"),
-    [("a*b?c|d", "a_b_c_d"), ("USB 3.0 ", "USB 3.0_"), ("cap. ..", "cap____")],
+    [
+        ("a*b?c|d", "a_b_c_d"),
+        ("USB 3.0 ", "USB 3.0_"),
+        ("cap. ..", "cap____"),
+        ("CON", "_CON"),
+        ("nul.txt", "_nul.txt"),
+        ("COM1", "_COM1"),
+        ("Lpt9.x.y", "_Lpt9.x.y"),
+        (".hidden", "_.hidden"),
+        ("CONN", "CONN"),
+        ("COM10", "COM10"),
+        ("AUX-1", "AUX-1"),
+    ],
 )
 def test_safe_name_replaces_what_windows_refuses(text: str, safe: str) -> None:
     assert library.safe_name(text) == safe
