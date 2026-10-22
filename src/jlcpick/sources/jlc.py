@@ -1,4 +1,4 @@
-"""Part data from the JLCPCB parts search."""
+"""Part data from the JLCPCB parts search, and bare board prices from its order calculator."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -10,6 +10,15 @@ SEARCH_PAGE = 50
 SEARCH_URL = (
     "https://jlcpcb.com/api/overseas-pcb-order/v1/shoppingCart/smtGood/selectSmtComponentList"
 )
+CALCULATOR_URL = (
+    "https://cart.jlcpcb.com/api/overseas-core-platform/shoppingCart/calculationGoodsCostsNew"
+)
+THICKNESSES_MM = (0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0)
+COLORS = ("green", "purple", "red", "yellow", "blue", "white", "black")
+NO_BARCODE = {
+    "serviceConfigAccessId": "dae19911cec340a584ca3c0c5c21fa6d",
+    "configOptionAccessId": "fa510a5b5dab4a5199fe2d46b7b40bff",
+}
 
 
 @dataclass(frozen=True)
@@ -55,6 +64,59 @@ class Matches:
     def cut(self) -> bool:
         """True when JLC found more parts than one page holds."""
         return self.total > SEARCH_PAGE
+
+
+@dataclass(frozen=True)
+class BoardPrice:
+    """What JLCPCB charges to make the bare boards, before shipping, and its build time.
+
+    ``thickness_mm`` is the option JLC priced: the one of `THICKNESSES_MM` nearest the board's.
+    """
+
+    usd: float
+    build_time: str
+    thickness_mm: float
+
+
+def board_price(
+    layers: int, width_mm: float, length_mm: float, thickness_mm: float, qty: int, color: str
+) -> BoardPrice:
+    """Price ``qty`` bare boards as JLCPCB's order page does, with its defaults: HASL, 1 oz copper.
+
+    ``color`` is one of `COLORS`, the solder mask; JLC prices a color it does not know as green.
+    The calculator refuses a request without any service option, so it gets `NO_BARCODE`, the
+    page's default.
+    """
+    thickness = min(THICKNESSES_MM, key=lambda option: abs(option - thickness_mm))
+    pcb = {
+        "stencilLayer": layers,
+        "stencilWidth": width_mm,
+        "stencilLength": length_mm,
+        "stencilPly": f"{thickness:.1f}",
+        "stencilCounts": qty,
+        "stencilNumber": 1,
+        "plateType": 1,
+        "cuprumThickness": 1,
+        "adornPut": "HASL(with lead)",
+        "adornColor": color.capitalize(),
+        "charFontColor": "Black" if color == "white" else "White",
+    }
+    body = {
+        "calculationCostsType": 1,
+        "pcbGoodsRequest": pcb,
+        "orderServiceConfigVos": [NO_BARCODE],
+    }
+    response = fetch_json(CALCULATOR_URL, body)
+    try:
+        if response.get("code") != 200:
+            raise SourceError(f"JLCPCB's board calculator failed: {response.get('message')}")
+        data = response["data"]
+        build_time = next(date["name"] for date in data["achieveDateList"] if date["checked"])
+        return BoardPrice(
+            round(float(data["orderCountTolls"]["dummyMoney"]), 2), build_time, thickness
+        )
+    except (KeyError, TypeError, AttributeError, StopIteration, ValueError) as error:
+        raise SourceError("JLCPCB's board calculator answered in an unexpected format") from error
 
 
 def part(lcsc: str) -> Part:
