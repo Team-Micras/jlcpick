@@ -48,4 +48,7 @@ MicrasMainBoard  ×5  Economic  fees as of 2026-09-09 (jlcpcb.com/help/article/p
     C25908     0402WGF5601TCE       R30            preferred     5      20      0.02
     C25755     0402WGF1503TCE       R36            preferred     5      20      0.02
 
+  safe swaps (0)                                                                  saves US$ 0.00
+  to check (4) · no rule (21) · keep (14)  → --verbose
+
   basic (25) → --json

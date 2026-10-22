@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from jlcpick.sources.http import SourceError, fetch_json
 
+SEARCH_PAGE = 50
 SEARCH_URL = (
     "https://jlcpcb.com/api/overseas-pcb-order/v1/shoppingCart/smtGood/selectSmtComponentList"
 )
@@ -42,19 +43,50 @@ class Part:
     datasheet: str | None
 
 
+@dataclass(frozen=True)
+class Matches:
+    """The basic or preferred parts a search returned, and how many parts matched in all."""
+
+    parts: tuple[Part, ...]
+    total: int
+
+    @property
+    def cut(self) -> bool:
+        """True when JLC found more parts than one page holds."""
+        return self.total > SEARCH_PAGE
+
+
 def part(lcsc: str) -> Part:
     """Look up ``lcsc``; raise `SourceError` when JLCPCB has no part with that exact code."""
-    response = fetch_json(SEARCH_URL, {"keyword": lcsc, "currentPage": 1, "pageSize": 10})
+    found, _ = _search(lcsc, {"pageSize": 10})
     try:
-        if response.get("code") != 200:
-            raise SourceError(f"JLCPCB search failed: {response.get('message')}")
-        found = response["data"]["componentPageInfo"]["list"] or []
         item = next((item for item in found if item["componentCode"] == lcsc), None)
         if item is None:
             raise SourceError(f"{lcsc}: JLCPCB has no part with this code")
         return _part(item)
     except (KeyError, TypeError, AttributeError) as error:
         raise SourceError(f"{lcsc}: JLCPCB answered in an unexpected format") from error
+
+
+def basic_or_preferred(keyword: str) -> Matches:
+    """The first 50 basic or preferred parts with a price that JLCPCB's text search finds."""
+    found, total = _search(keyword, {"pageSize": SEARCH_PAGE, "componentLibraryType": "base",
+                                     "preferredComponentFlag": True})  # fmt: skip
+    try:
+        return Matches(tuple(_part(item) for item in found if item["componentPrices"]), total)
+    except (KeyError, TypeError, AttributeError) as error:
+        raise SourceError(f"{keyword}: JLCPCB answered in an unexpected format") from error
+
+
+def _search(keyword: str, filters: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+    response = fetch_json(SEARCH_URL, {"keyword": keyword, "currentPage": 1, **filters})
+    try:
+        if response.get("code") != 200:
+            raise SourceError(f"JLCPCB search failed: {response.get('message')}")
+        page = response["data"]["componentPageInfo"]
+        return page["list"] or [], page["total"]
+    except (KeyError, TypeError, AttributeError) as error:
+        raise SourceError(f"{keyword}: JLCPCB answered in an unexpected format") from error
 
 
 def _part(item: dict[str, Any]) -> Part:

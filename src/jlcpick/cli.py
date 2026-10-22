@@ -8,7 +8,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from jlcpick import __version__, board, bom, bom_input
+from jlcpick import __version__, board, bom, bom_input, swaps
 from jlcpick.bom_input import BomError
 from jlcpick.sources import easyeda, http, jlc
 from jlcpick.sources.http import SourceError
@@ -30,6 +30,8 @@ def main(argv: list[str] | None = None) -> None:
     cost.add_argument("--assembly", choices=["economic", "standard"], default="economic")
     cost.add_argument("--exclude", type=_designators, action="extend", default=[], metavar="U1,U3")
     cost.add_argument("--json", action="store_true", help="print JSON")
+    cost.add_argument("--verbose", action="store_true", help="list every part a swap skipped")
+    cost.add_argument("--no-swaps", action="store_true", help="skip the search for safe swaps")
     cost.add_argument(
         "--fail-on-extended",
         action="store_true",
@@ -64,29 +66,46 @@ def _designators(text: str) -> list[str]:
 
 
 def _bom(args: argparse.Namespace) -> None:
-    lines = bom_input.assembled(
-        bom_input.read(args.bom.read_text(encoding="utf-8-sig")), set(args.exclude)
-    )
-    footprints = None if args.pcb is None else board.footprints(args.pcb.read_text("utf-8"))
+    lines = bom_input.assembled(bom_input.read(_text(args.bom)), set(args.exclude))
+    footprints = None if args.pcb is None else board.footprints(_text(args.pcb))
     codes = bom.codes(lines)
     if len(codes) > 1:
         seconds = len(codes) * http.pause("jlcpcb.com")
         print(f"jlcpick: looking up {len(codes)} parts, about {seconds:.0f} s", file=sys.stderr)
     parts = {code: jlc.part(code) for code in codes}
+    suggestions = None if args.no_swaps else _suggestions(parts)
     name = (args.pcb or args.bom).stem
-    report = bom.report(name, lines, parts, args.qty, args.assembly, footprints)
+    report = bom.report(name, lines, parts, args.qty, args.assembly, footprints, suggestions)
     for warning in report.warnings:
         print(f"jlcpick: {warning}", file=sys.stderr)
     if args.json:
         print(json.dumps(asdict(report), indent=2, ensure_ascii=False))
     else:
-        print(bom.text(report))
+        print(bom.text(report, verbose=args.verbose))
     paying = [line.lcsc for line in report.lines if line.feeder_fee and line.tier != "basic"]
     if args.fail_on_extended and paying:
         print(
             f"jlcpick: extended parts paying the feeder fee: {', '.join(paying)}", file=sys.stderr
         )
         sys.exit(3)
+
+
+def _text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise BomError(f"{path}: not UTF-8 text; save it as UTF-8 and try again") from error
+
+
+def _suggestions(parts: dict[str, jlc.Part]) -> dict[str, swaps.Suggestion]:
+    extended = [p for p in parts.values() if p.tier == "extended" and not p.preferred]
+    if extended:
+        seconds = 2 * len(extended) * http.pause("jlcpcb.com")
+        print(
+            f"jlcpick: looking for swaps of {len(extended)} extended parts, up to {seconds:.0f} s",
+            file=sys.stderr,
+        )
+    return {code: swaps.suggest(part, jlc.basic_or_preferred) for code, part in parts.items()}
 
 
 def _get(codes: list[str], as_json: bool, out: Path | None) -> None:

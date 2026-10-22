@@ -11,6 +11,7 @@ import pytest
 from jlcpick.cli import main
 
 PARTS = Path(__file__).parent / "fixtures" / "parts"
+SEARCHES = Path(__file__).parent / "fixtures" / "search"
 
 
 def run(*argv: str) -> None:
@@ -27,7 +28,10 @@ def recorded(request: Request, timeout: float) -> io.BytesIO:
     url = request.full_url
     if url.startswith("https://jlcpcb.com/"):
         assert isinstance(request.data, bytes)
-        return io.BytesIO((PARTS / f"{json.loads(request.data)['keyword']}_jlc.json").read_bytes())
+        body = json.loads(request.data)
+        if "componentLibraryType" in body:
+            return io.BytesIO((SEARCHES / f"{body['keyword'].replace('/', '_')}.json").read_bytes())
+        return io.BytesIO((PARTS / f"{body['keyword']}_jlc.json").read_bytes())
     if url.startswith("https://easyeda.com/api/products/"):
         return io.BytesIO((PARTS / f"{url.split('/')[-2]}_easyeda.json").read_bytes())
     if url.startswith("https://modules.easyeda.com/"):
