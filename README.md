@@ -32,7 +32,17 @@ manufacturer, datasheet and description:
 
 Running it again changes nothing; `--force` replaces a symbol that was edited, and a footprint or STEP that was edited unless another symbol uses it.
 
-Price a board's assembly from its KiCad BOM:
+Price a board's assembly from its schematic:
+
+```sh
+uvx --from . jlcpick bom board.kicad_sch --pcb board.kicad_pcb --qty 5
+```
+
+`bom` exports the BOM of the root `.kicad_sch` with KiCad's `kicad-cli`, reading the code from
+every symbol field named like `LCSC`, `LCSC Part #` or `SUPPLIER PART` that holds one, the same
+fields `fab` reads. It finds `kicad-cli` on PATH, then where KiCad 10 installs it on macOS and
+Windows, then in KiCad's Flatpak (`flatpak run --command=kicad-cli org.kicad.KiCad`, which only
+sees files under your home); `--kicad-cli PATH` names another. A BOM exported by hand works too:
 
 ```sh
 kicad-cli sch export bom board.kicad_sch -o bom.csv --ref-range-delimiter '' \
@@ -41,7 +51,7 @@ kicad-cli sch export bom board.kicad_sch -o bom.csv --ref-range-delimiter '' \
 uvx --from . jlcpick bom bom.csv --pcb board.kicad_pcb --qty 5
 ```
 
-`LCSC` is the symbol field holding the code; use your field's name in `--fields`. The report
+There `LCSC` is the symbol field holding the code; use your field's name in `--fields`. The report
 lists parts, fees (setup, stencil, extended-part feeder, X-ray of leadless parts, joints) and every part that
 is not basic,
 with the units JLC charges after attrition and minimums, then the safe swaps: basic or preferred
@@ -58,8 +68,10 @@ every report prints that date.
 Quote the whole order, bare boards plus assembly:
 
 ```sh
-uvx --from . jlcpick quote bom.csv --pcb board.kicad_pcb --qty 5
+uvx --from . jlcpick quote board.kicad_sch --pcb board.kicad_pcb --qty 5
 ```
+
+`quote` takes the schematic or an exported BOM, as `bom` does.
 
 The boards are priced live by JLC's own order calculator, with the size, copper layers and
 thickness read from the `.kicad_pcb` (thickness rounded to JLC's nearest option) and JLC's

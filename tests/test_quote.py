@@ -7,7 +7,7 @@ from typing import Any
 from urllib.request import Request
 
 import pytest
-from conftest import recorded, run
+from conftest import mainboard_schematic, recorded, run
 
 from jlcpick import quote
 from jlcpick.cli import main
@@ -52,6 +52,25 @@ def board(outline: str, thickness: str = "1.6") -> str:
     )
     Path("bom.csv").write_text("C25744\n")
     return "board.kicad_pcb"
+
+
+def test_quote_exports_the_schematic_with_kicads_flatpak_when_no_kicad_cli_is_installed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kicad_cli: Path,
+    tmp_path: Path,
+) -> None:
+    kicad_cli.rename(kicad_cli.with_name("flatpak"))
+    (tmp_path / "home/.local/share/flatpak/app/org.kicad.KiCad").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PATH", str(kicad_cli.parent))
+
+    run("quote", mainboard_schematic(), *MAINBOARD[2:])
+
+    _, expected = (ROOT / "docs/example-quote.txt").read_text().split("\n", 1)
+    assert capsys.readouterr().out == expected
+    args = json.loads((kicad_cli.parent / "args.json").read_text())
+    assert args[:6] == ["run", "--command=kicad-cli", "org.kicad.KiCad", "sch", "export", "bom"]
 
 
 def test_quote_prints_the_mainboard_like_the_documented_example(

@@ -354,6 +354,20 @@ def test_fab_with_kikit_but_no_pcbnew_says_how_to_get_it() -> None:
     assert not Path("jlcpcb/bom.csv").exists()
 
 
+def test_fab_reads_codes_typed_in_lowercase_and_not_the_library_symbols_fields(kikit: Path) -> None:
+    record("Designator,LCSC\nR1,C25744\n", "Designator,Rotation\nR1,0\n")
+    path = board(("R1", "MicrasLib:R0402"))
+    Path("board.kicad_sch").write_text(
+        '(kicad_sch (lib_symbols (symbol "Device:R" (property "LCSC" "C25744")))\n'
+        '  (symbol (lib_id "Device:R") (property "LCSC Part #" " c25744 ")))\n'
+    )
+
+    run("fab", path)
+
+    args = json.loads(kikit.read_text())["args"]
+    assert args[args.index("--field") + 1] == "LCSC Part #"
+
+
 @pytest.mark.usefixtures("kikit")
 def test_fab_names_the_fields_it_reads_the_code_from_when_the_schematic_has_none() -> None:
     path = board(("R1", "MicrasLib:R0402"))
