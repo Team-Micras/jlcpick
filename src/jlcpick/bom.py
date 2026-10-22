@@ -111,6 +111,12 @@ def report(
     sides = len({f.side for found in placed.values() for f in found or [] if not f.tht}) or 1
     fees = pricing.fees(assembly, placements, sides)
     priced = [_line(p, groups[p.part.lcsc], p.part.lcsc in fees.feeder_parts) for p in placements]
+    warnings += [
+        f"{line.lcsc} ({', '.join(line.designators)}): {parts[line.lcsc].stock} in stock, "
+        f"JLC charges {line.charged}; pre-order it or pick another part"
+        for line in priced
+        if parts[line.lcsc].stock < line.charged
+    ]
     if suggestions is not None:
         priced = [
             replace(line, swap=_swap(suggestions[line.lcsc], line, assembly)) for line in priced
@@ -149,6 +155,7 @@ def text(report: Report, verbose: bool = False) -> str:
         f"  fees       {_fees(report)}",
         f"  joints     {_joints(report.fees)}",
         f"  total      US$ {total:.2f}   per board US$ {total / report.qty:.2f}",
+        *xray(report.fees),
     ]
     if report.assembly == "standard":
         lines.append("  not included: packing, fixture and the per-board batch fee of Standard")
@@ -175,6 +182,17 @@ def text(report: Report, verbose: bool = False) -> str:
     basic = len(report.lines) - len(others)
     lines += ["", f"  basic ({basic}) → --json"]
     return "\n".join(line.rstrip() for line in lines)
+
+
+def xray(fees: pricing.Fees) -> list[str]:
+    """The X-ray JLC may add for leadless parts, as a line of the text report; none without
+    them."""
+    if not fees.xray_units:
+        return []
+    return [
+        f"  x-ray      if JLC requires it: +US$ {fees.xray_usd:.2f}"
+        f"   {fees.xray_units} leadless × {fees.xray_each_usd:.2f}"
+    ]
 
 
 _ROW = "    {:<10} {:<20} {:<14} {:<9} {:>5} {:>7} {:>9} {:>6}"
@@ -223,8 +241,6 @@ def _fees(report: Report) -> str:
         f"stencil {_times(sides, schedule.stencil, fees.stencil_usd)}",
         f"{feeder} {len(fees.feeder_parts)} × {fees.feeder_each_usd:.2f} = {fees.feeder_usd:.2f}",
     ]
-    if fees.xray_units:
-        parts.append(f"x-ray {fees.xray_units} × {fees.xray_each_usd:.2f} = {fees.xray_usd:.2f}")
     if report.assembly == "standard":
         parts.append(f"handling {fees.handling_usd:.2f}")
     return " · ".join(parts)
@@ -290,7 +306,7 @@ def _swap(suggestion: swaps.Suggestion, line: Line, assembly: pricing.Assembly) 
 
     def saves(new: Part) -> float:
         charged = pricing.charged(new, line.need)
-        fee = feeder if not line.tht and pricing.pays_feeder(new, assembly) else 0.0
+        fee = feeder if pricing.pays_feeder(new, assembly, line.tht) else 0.0
         return round(now - round(charged * pricing.unit_usd(new, charged), 2) - fee, 2)
 
     stocked = [c for c in suggestion.candidates if c.stock >= pricing.charged(c, line.need)]

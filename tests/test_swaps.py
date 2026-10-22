@@ -116,6 +116,20 @@ def test_swaps_in_standard_save_only_the_parts(capsys: pytest.CaptureFixture[str
     assert (line["total_usd"], line["swap"]["to"]["saves_usd"]) == (2.91, 1.96)
 
 
+def test_swaps_of_a_through_hole_part_save_its_feeder_fee(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    Path("board.kicad_pcb").write_text(
+        '(kicad_pcb (footprint "C" (layer "F.Cu") (property "Reference" "C1")'
+        ' (attr through_hole) (pad "1" thru_hole) (pad "2" thru_hole)))\n'
+    )
+
+    result = report(capsys, codes("Refs,LCSC\nC1,C77074\n"), "--pcb", "board.kicad_pcb")
+
+    [line] = result["lines"]
+    assert (line["tht"], line["feeder_fee"], line["swap"]["to"]["saves_usd"]) == (True, True, 5.03)
+
+
 def test_swaps_print_safe_swaps_and_count_the_rest(capsys: pytest.CaptureFixture[str]) -> None:
     run("bom", codes(EXTRA))
 

@@ -56,13 +56,21 @@ def test_an_extended_smt_part_pays_its_fee_once_and_the_price_at_its_break() -> 
     assert fees.total_usd == 12.80
 
 
-def test_a_tht_part_pays_hand_soldering_and_no_feeder_or_stencil() -> None:
+def test_a_tht_part_pays_hand_soldering_and_the_feeder_but_no_stencil() -> None:
     tht = pricing.Placement(part("C777", "extended"), units=1, tht=True, joints=10)
 
     fees = pricing.fees("economic", [tht], sides=1)
 
-    assert (fees.stencil_usd, fees.feeder_parts, fees.manual_usd) == (0.0, (), 3.74)
-    assert fees.total_usd == 11.92
+    assert (fees.stencil_usd, fees.feeder_parts, fees.manual_usd) == (0.0, ("C777",), 3.74)
+    assert fees.total_usd == 14.99
+
+
+def test_standard_charges_no_feeder_for_a_through_hole_part() -> None:
+    tht = pricing.Placement(part("C777", "extended"), units=1, tht=True, joints=10)
+
+    fees = pricing.fees("standard", [tht], sides=1)
+
+    assert fees.feeder_parts == ()
 
 
 def test_standard_charges_a_feeder_for_every_smt_part() -> None:
@@ -132,6 +140,7 @@ def test_xray_is_charged_per_unit_of_leadless_packages(package: str, leadless: b
     fees = pricing.fees("economic", [placement], sides=1)
 
     assert (fees.xray_units, fees.xray_usd) == ((10, 16.4) if leadless else (0, 0.0))
+    assert fees.total_usd == 9.73
 
 
 @pytest.mark.parametrize("assembly", ["economic", "standard"])

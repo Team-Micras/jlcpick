@@ -1,3 +1,4 @@
+import csv
 import io
 import json
 from collections.abc import Callable
@@ -129,6 +130,61 @@ def test_quote_json_adds_the_boards_to_the_assembly_and_weighs_the_extended_part
         100 * extended["usd"] / order["total_usd"], abs=0.05
     )
     assert all(line["swap"] is None for line in pcba["lines"])
+
+
+def test_quote_assembles_fewer_boards_than_it_makes(
+    capsys: pytest.CaptureFixture[str], sent: list[dict[str, Any]]
+) -> None:
+    order = quote_json(capsys, *MAINBOARD, "--qty", "5", "--assemble", "2")
+    run(*MAINBOARD, "--qty", "5", "--assemble", "2")
+
+    assert sent[0]["pcbGoodsRequest"]["stencilCounts"] == 5
+    assert (order["qty"], order["pcba"]["qty"]) == (5, 2)
+    assert {line["need"] for line in order["pcba"]["lines"] if line["lcsc"] == "C5271073"} == {2}
+    assert capsys.readouterr().out.startswith("MicrasMainBoard  ×5, 2 assembled  Economic\n")
+
+
+def test_quote_matches_the_fees_of_a_real_mainboard_order(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """JLC charged 18 feeder fees on the order of 2025-11-26 (Economic, 5 made, 2 assembled), one
+    for the through-hole slide switch, and no X-ray for its QFN."""
+    with (FIXTURES / "mainboard-order-2025-11.csv").open() as file:
+        ordered = {d for row in csv.DictReader(file) for d in row["designators"].split()}
+    with (FIXTURES / "MicrasMainBoard-kicad-bom.csv").open() as file:
+        placed = {d for row in csv.DictReader(file) for d in row["Refs"].split(",")}
+
+    order = quote_json(
+        capsys, *MAINBOARD, "--qty", "5", "--assemble", "2", "--exclude", ",".join(placed - ordered)
+    )
+
+    fees = order["pcba"]["fees"]
+    assert len(fees["feeder_parts"]) == 18
+    assert "C963202" in fees["feeder_parts"]
+    assert fees["xray_usd"] > 0
+    assert fees["total_usd"] == round(
+        sum(fees[f"{name}_usd"] for name in ("setup", "stencil", "feeder", "smt_joints", "manual"))
+        + fees["handling_usd"],
+        2,
+    )
+
+
+def test_quote_leaves_out_the_per_board_price_when_it_assembles_fewer(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run(*MAINBOARD, "--qty", "5", "--assemble", "2")
+    fewer = capsys.readouterr().out
+    run(*MAINBOARD, "--qty", "5")
+
+    assert "per board" not in fewer
+    assert "per board US$" in capsys.readouterr().out
+
+
+def test_quote_refuses_to_assemble_more_boards_than_it_makes(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit, match="--assemble 6 is more than the 5 boards of --qty"):
+        run(*MAINBOARD, "--qty", "5", "--assemble", "6")
 
 
 def test_quote_standard_counts_no_feeder_fee_against_extended_parts(

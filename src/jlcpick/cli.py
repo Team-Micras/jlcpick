@@ -78,7 +78,8 @@ def main(argv: list[str] | None = None) -> None:
     order = commands.add_parser("quote", help="price a whole JLCPCB order: boards and assembly")
     order.add_argument("bom", type=Path, help=BOM_SOURCE)
     order.add_argument("--pcb", type=Path, required=True, help="the .kicad_pcb")
-    order.add_argument("--qty", type=_positive, default=5, help="boards to make and assemble (5)")
+    order.add_argument("--qty", type=_positive, default=5, help="boards to make (5)")
+    order.add_argument("--assemble", type=_positive, metavar="N", help="boards to assemble (--qty)")
     order.add_argument("--assembly", choices=["economic", "standard"], default="economic")
     order.add_argument("--exclude", type=_designators, action="extend", default=[], metavar="U1,U3")
     order.add_argument("--color", choices=jlc.COLORS, default="green", help="solder mask (green)")
@@ -132,7 +133,7 @@ def _designators(text: str) -> list[str]:
 
 
 def _bom(args: argparse.Namespace) -> None:
-    report = _assembly(args, with_swaps=not args.no_swaps)
+    report = _assembly(args, args.qty, with_swaps=not args.no_swaps)
     if args.json:
         print(json.dumps(asdict(report), indent=2, ensure_ascii=False))
     else:
@@ -146,8 +147,11 @@ def _bom(args: argparse.Namespace) -> None:
 
 
 def _quote(args: argparse.Namespace) -> None:
+    assemble = args.assemble or args.qty
+    if assemble > args.qty:
+        sys.exit(f"jlcpick: --assemble {assemble} is more than the {args.qty} boards of --qty")
     fabrication = board.fabrication(_text(args.pcb))
-    pcba = _assembly(args, with_swaps=False)
+    pcba = _assembly(args, assemble, with_swaps=False)
     price = jlc.board_price(
         fabrication.layers,
         fabrication.width_mm,
@@ -164,14 +168,14 @@ def _quote(args: argparse.Namespace) -> None:
         )
     for reference in fabrication.unmeasured:
         print(f"jlcpick: the outline drawn inside {reference} is not measured", file=sys.stderr)
-    order = quote.quote(fabrication, price, args.color, pcba)
+    order = quote.quote(fabrication, price, args.color, args.qty, pcba)
     if args.json:
         print(json.dumps(asdict(order), indent=2, ensure_ascii=False))
     else:
         print(quote.text(order))
 
 
-def _assembly(args: argparse.Namespace, with_swaps: bool) -> bom.Report:
+def _assembly(args: argparse.Namespace, qty: int, with_swaps: bool) -> bom.Report:
     lines = bom_input.assembled(
         bom_input.read(_bom_csv(args.bom, args.kicad_cli)), set(args.exclude)
     )
@@ -183,7 +187,7 @@ def _assembly(args: argparse.Namespace, with_swaps: bool) -> bom.Report:
     parts = {code: jlc.part(code) for code in codes}
     suggestions = _suggestions(parts) if with_swaps else None
     name = (args.pcb or args.bom).stem
-    report = bom.report(name, lines, parts, args.qty, args.assembly, footprints, suggestions)
+    report = bom.report(name, lines, parts, qty, args.assembly, footprints, suggestions)
     for warning in report.warnings:
         print(f"jlcpick: {warning}", file=sys.stderr)
     return report

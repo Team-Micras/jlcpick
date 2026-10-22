@@ -60,8 +60,7 @@ uvx --from . jlcpick bom bom.csv --pcb board.kicad_pcb --qty 5
 ```
 
 There `LCSC` is the symbol field holding the code; use your field's name in `--fields`. The report
-lists parts, fees (setup, stencil, extended-part feeder, X-ray of leadless parts, joints) and every part that
-is not basic,
+lists parts, fees (setup, stencil, extended-part feeder, joints) and every part that is not basic,
 with the units JLC charges after attrition and minimums, then the safe swaps: basic or preferred
 parts with the same MPN, or resistors and capacitors with the same value and package and no worse
 field, with what each saves. Parts it cannot judge are counted as "to check" or "no rule";
@@ -69,7 +68,11 @@ field, with what each saves. Parts it cannot judge are counted as "to check" or 
 [docs/example-bom.txt](docs/example-bom.txt). `--exclude U1,U3` leaves parts out of the order,
 `--assembly standard` prices Standard PCBA (packing, fixture and the per-board batch fee are not
 included), `--json` prints JSON, and `--fail-on-extended` exits 3 when an extended part pays the
-feeder fee. Fees come from JLC's
+feeder fee. Every extended part that is not preferred pays the feeder fee in Economic, through-hole
+ones too, as JLC charged on a real order; Standard charges it for every part placed by machine.
+X-ray of leadless parts (BGA, QFN…) is shown apart, as "if JLC requires it", and left out of the
+total: JLC did not charge it on that order. A part with less stock than the units JLC charges gets
+a warning. Fees come from JLC's
 [PCB Assembly Price](https://jlcpcb.com/help/article/pcb-assembly-price) page of 2026-09-09, and
 every report prints that date.
 
@@ -79,7 +82,8 @@ Quote the whole order, bare boards plus assembly:
 uvx --from . jlcpick quote board.kicad_sch --pcb board.kicad_pcb --qty 5
 ```
 
-`quote` takes the schematic or an exported BOM, as `bom` does.
+`quote` takes the schematic or an exported BOM, as `bom` does. `--qty` is the boards made;
+`--assemble 2` assembles only two of them (default: all).
 
 The boards are priced live by JLC's own order calculator, with the size, copper layers and
 thickness read from the `.kicad_pcb` (thickness rounded to JLC's nearest option) and JLC's

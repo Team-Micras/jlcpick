@@ -157,6 +157,10 @@ def test_bom_json_reports_lines_fees_and_warnings(capsys: pytest.CaptureFixture[
     assert report["warnings"] == [
         "EC1, EC2: no LCSC code, left out of the cost",
         "W1, W2, W3, W4: no LCSC code, left out of the cost",
+        "C5271073 (IC1): 1 in stock, JLC charges 2; pre-order it or pick another part",
+        "C5267399 (IC2): 0 in stock, JLC charges 2; pre-order it or pick another part",
+        "C20033901 (IC6): 0 in stock, JLC charges 2; pre-order it or pick another part",
+        "C2938919 (L2): 0 in stock, JLC charges 2; pre-order it or pick another part",
     ]
 
 
@@ -171,7 +175,7 @@ def test_bom_exclude_drops_a_unique_extended_part_and_its_fee(
     assert len(full["fees"]["feeder_parts"]) - len(without_mcu["fees"]["feeder_parts"]) == 1
     assert full["fees"]["smt_joints"] - without_mcu["fees"]["smt_joints"] == 69 * 5
     assert full["total_usd"] - without_mcu["total_usd"] == pytest.approx(
-        mcu["total_usd"] + 3.07 + round(69 * 5 * 0.0016, 2) + 5 * 0.82, abs=0.011
+        mcu["total_usd"] + 3.07 + round(69 * 5 * 0.0016, 2), abs=0.011
     )
 
 
@@ -319,15 +323,21 @@ def test_bom_x_ray_charges_leadless_packages(capsys: pytest.CaptureFixture[str])
     assert (report["fees"]["xray_units"], report["fees"]["xray_usd"]) == (5, 8.2)
 
 
-def test_bom_text_names_the_x_ray_fee_only_when_there_is_one(
+def test_bom_text_names_x_ray_apart_from_the_total_only_when_there_is_one(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     run("bom", csv("Refs,LCSC\nC1,C25744\n"), "--no-swaps")
     without = capsys.readouterr().out
     run("bom", csv("Refs,LCSC\nIC1,C5271073\n"), "--no-swaps")
+    out, err = capsys.readouterr()
+    report = bom_json(capsys, "bom", csv("Refs,LCSC\nIC1,C5271073\n"), "--no-swaps")
 
     assert "x-ray" not in without
-    assert "x-ray 5 × 1.64 = 8.20" in capsys.readouterr().out
+    assert "  x-ray      if JLC requires it: +US$ 8.20   5 leadless × 1.64" in out
+    assert "x-ray" not in out.split("\n")[3]
+    assert report["fees"]["xray_usd"] == 8.2
+    assert report["total_usd"] == round(report["parts_usd"] + 8.18 + 1.53 + 3.07, 2)
+    assert "C5271073 (IC1): 1 in stock, JLC charges 5; pre-order it or pick another part" in err
 
 
 def test_bom_standard_on_a_board_with_a_bottom_part_pays_two_sides(
