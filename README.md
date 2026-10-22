@@ -55,6 +55,19 @@ feeder fee. Fees come from JLC's
 [PCB Assembly Price](https://jlcpcb.com/help/article/pcb-assembly-price) page of 2026-09-09, and
 every report prints that date.
 
+Quote the whole order, bare boards plus assembly:
+
+```sh
+uvx --from . jlcpick quote bom.csv --pcb board.kicad_pcb --qty 5
+```
+
+The boards are priced live by JLC's own order calculator, with the size, copper layers and
+thickness read from the `.kicad_pcb` (thickness rounded to JLC's nearest option) and JLC's
+defaults for the rest; `--color` picks the solder mask. The assembly is the `bom` report without
+the swap search, and the quote says how much the extended parts add: their feeder fees and the
+units JLC charges beyond those placed. Shipping, taxes and customs are not included. See
+[docs/example-quote.txt](docs/example-quote.txt).
+
 Write the files of a JLCPCB order, `jlcpcb/gerbers.zip`, `jlcpcb/bom.csv` and `jlcpcb/pos.csv`:
 
 ```sh

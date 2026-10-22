@@ -13,6 +13,7 @@ from jlcpick.cli import main
 PARTS = Path(__file__).parent / "fixtures" / "parts"
 SEARCHES = Path(__file__).parent / "fixtures" / "search"
 STEPS = Path(__file__).parent / "fixtures" / "step"
+BOARD_PRICE = Path(__file__).parent / "fixtures" / "quote" / "mainboard_response.json"
 
 
 def run(*argv: str) -> None:
@@ -27,6 +28,8 @@ def run(*argv: str) -> None:
 def recorded(request: Request, timeout: float) -> io.BytesIO:
     """Answer like JLCPCB and EasyEDA did when the fixtures were recorded."""
     url = request.full_url
+    if url.startswith("https://cart.jlcpcb.com/"):
+        return io.BytesIO(BOARD_PRICE.read_bytes())
     if url.startswith("https://jlcpcb.com/"):
         assert isinstance(request.data, bytes)
         body = json.loads(request.data)

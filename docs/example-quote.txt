@@ -1,0 +1,12 @@
+$ jlcpick quote MicrasMainBoard-kicad-bom.csv --pcb MicrasMainBoard.kicad_pcb --qty 5
+MicrasMainBoard  ×5  Economic
+
+  board      US$ 8.00   builds in 3-4 days
+             4 layers · 50 × 90 mm · 1.0 mm (board file 1.0412) · green · HASL
+  assembly   US$ 362.82   parts 254.55 + fees 108.27, fees as of 2026-09-09
+  total      US$ 370.82   per board US$ 74.16
+  extended   US$ 76.54, 20.6 % of the total
+             feeder 73.68 + units beyond those placed 2.86, on 39 extended parts
+
+  not included: shipping, taxes and customs
+  parts, fees and swaps: jlcpick bom

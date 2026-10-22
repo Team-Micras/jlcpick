@@ -1,6 +1,6 @@
 ---
 name: jlcpick
-description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, add parts to a KiCad project's library (KiCad's own symbols and footprints when they fit, otherwise a draft converted from EasyEDA), price a KiCad BOM for JLCPCB assembly with safe basic swaps, and write JLCPCB's Gerbers, BOM and CPL, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), putting a part with its MPN and LCSC code into a KiCad project, estimating what assembling a board costs and which parts make it expensive, or preparing the files of a JLCPCB order.
+description: Look up LCSC/JLCPCB parts (basic, preferred or extended tier, stock, prices), download their KiCad footprint and STEP, add parts to a KiCad project's library (KiCad's own symbols and footprints when they fit, otherwise a draft converted from EasyEDA), price a KiCad BOM for JLCPCB assembly with safe basic swaps, quote the whole order with the bare boards, and write JLCPCB's Gerbers, BOM and CPL, with the jlcpick CLI. Use when choosing parts for a board assembled at JLCPCB, checking whether a part is basic or extended, fetching a footprint or 3D model by LCSC code (Cxxxx), putting a part with its MPN and LCSC code into a KiCad project, estimating what assembling a board costs and which parts make it expensive, quoting a whole order with the bare boards, or preparing the files of a JLCPCB order.
 ---
 
 # jlcpick
@@ -211,6 +211,49 @@ To make a board cheaper, apply the lines whose `swap.verdict` is `swap`; then lo
 `to_check` ones and the lines with `feeder_fee: true` and at `charged` well above `need` (a
 minimum order): a basic part with the same specs removes both.
 
+## Quote a whole order
+
+```sh
+jlcpick quote bom.csv --pcb board.kicad_pcb --qty 5 --json
+```
+
+Prices the bare boards with JLC's own order calculator, live, and adds the assembly that `bom`
+prices (same BOM, `--assembly` and `--exclude`; no swap search, run `bom` for that). The board's
+size is the bounding box of its Edge.Cuts drawings (not those inside footprints), its layers are
+the copper layers of the file, and its thickness is the file's, rounded to JLC's nearest option
+(0.4, 0.6, 0.8, 1.0, 1.2, 1.6 or 2.0 mm). Everything else is JLC's default: HASL with lead, 1 oz
+copper, white silkscreen (black on a white mask). `--color` picks the solder mask: `green`
+(default), `purple`, `red`, `yellow`, `blue`, `white` or `black`; colors other than green cost
+more. Shipping, taxes and customs are not included.
+
+The JSON:
+
+| Field | Meaning |
+|---|---|
+| `name`, `qty` | board name (file stem), boards made and assembled |
+| `board` | the bare boards (below) |
+| `pcba` | the assembly, the same report as `bom --json --no-swaps` |
+| `extended` | what the extended parts add (below) |
+| `total_usd` | `board.usd` plus `pcba.total_usd` |
+
+`board`:
+
+| Field | Meaning |
+|---|---|
+| `width_mm`, `length_mm`, `layers` | as read from the file |
+| `thickness_mm`, `kicad_thickness_mm` | JLC's option priced, and the file's own thickness |
+| `color` | solder mask |
+| `usd`, `build_time` | JLC's price for all the boards and its build time, e.g. `3-4 days` |
+
+`extended`, in US$ unless said:
+
+| Field | Meaning |
+|---|---|
+| `parts` | extended lines, preferred included |
+| `feeder_usd` | feeder fees of extended parts; 0 in Standard, where basic parts pay it too |
+| `extra_units_usd` | units JLC charges beyond those placed: attrition and minimums |
+| `usd`, `share_pct` | their sum, and its percentage of `total_usd` |
+
 ## Fabrication files
 
 ```sh
@@ -246,7 +289,7 @@ Problems (stderr, exit 3, after the files are written):
 | Code | Meaning |
 |---|---|
 | 0 | ok, possibly with warnings on stderr |
-| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `fab`, no schematic next to the board, no LCSC field in it, an `--exclude` designator not on the board, KiKit missing or failing, or KiCad 10's footprints not found (set `KICAD10_FOOTPRINT_DIR`); for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
+| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `quote`, also a board without an Edge.Cuts outline or thickness, or JLC's calculator failing; for `fab`, no schematic next to the board, no LCSC field in it, an `--exclude` designator not on the board, KiKit missing or failing, or KiCad 10's footprints not found (set `KICAD10_FOOTPRINT_DIR`); for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
 | 2 | invalid usage, e.g. a code that is not `C` + digits |
 | 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first. `fab`: a stock footprint without a checked rotation, or a stock through-hole one; the files are written first |
 
@@ -259,6 +302,8 @@ Problems (stderr, exit 3, after the files are written):
 - `bom` looks up every distinct code once, 2 s apart: about 2 minutes for 60 parts, plus one or
   two searches per extended part for swaps (the MainBoard, 64 parts and 27 extended, took 226 s;
   154 s with `--no-swaps`).
+- `quote` makes one request to JLC's calculator, then looks up the parts as `bom --no-swaps` does.
+  The board price is live; say the date when you pass it on.
 - Fees are JLC's published table on `fees_as_of`; JLC may have changed them since. The optional
   "confirm part placement" (0.45) is not included. With `--assembly standard`, packing, fixture and
   the per-board batch fee are not included either.

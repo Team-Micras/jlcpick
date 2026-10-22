@@ -13,7 +13,7 @@ import tempfile
 from dataclasses import asdict, replace
 from pathlib import Path, PurePath
 
-from jlcpick import __version__, board, bom, bom_input, fab, library, swaps
+from jlcpick import __version__, board, bom, bom_input, fab, library, quote, swaps
 from jlcpick.bom_input import BomError
 from jlcpick.sources import easyeda, http, jlc
 from jlcpick.sources.http import SourceError
@@ -61,6 +61,14 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="exit 3 when an extended part pays the feeder fee",
     )
+    order = commands.add_parser("quote", help="price a whole JLCPCB order: boards and assembly")
+    order.add_argument("bom", type=Path, help="CSV from kicad-cli sch export bom, or LCSC codes")
+    order.add_argument("--pcb", type=Path, required=True, help="the .kicad_pcb")
+    order.add_argument("--qty", type=_positive, default=5, help="boards to make and assemble (5)")
+    order.add_argument("--assembly", choices=["economic", "standard"], default="economic")
+    order.add_argument("--exclude", type=_designators, action="extend", default=[], metavar="U1,U3")
+    order.add_argument("--color", choices=jlc.COLORS, default="green", help="solder mask (green)")
+    order.add_argument("--json", action="store_true", help="print JSON")
     add = commands.add_parser("add", help="add parts to the project's symbol library")
     add.add_argument("codes", nargs="+", type=_lcsc, metavar="LCSC", help="e.g. C25744")
     add.add_argument(
@@ -83,6 +91,8 @@ def main(argv: list[str] | None = None) -> None:
             _add(args.codes, args.lib, args.force, args.json)
         elif args.command == "fab":
             _fab(args.pcb, set(args.exclude), args.out)
+        elif args.command == "quote":
+            _quote(args)
         else:
             _bom(args)
     except (SourceError, BomError, OSError) as error:
@@ -107,18 +117,7 @@ def _designators(text: str) -> list[str]:
 
 
 def _bom(args: argparse.Namespace) -> None:
-    lines = bom_input.assembled(bom_input.read(_text(args.bom)), set(args.exclude))
-    footprints = None if args.pcb is None else board.footprints(_text(args.pcb))
-    codes = bom.codes(lines)
-    if len(codes) > 1:
-        seconds = len(codes) * http.pause("jlcpcb.com")
-        print(f"jlcpick: looking up {len(codes)} parts, about {seconds:.0f} s", file=sys.stderr)
-    parts = {code: jlc.part(code) for code in codes}
-    suggestions = None if args.no_swaps else _suggestions(parts)
-    name = (args.pcb or args.bom).stem
-    report = bom.report(name, lines, parts, args.qty, args.assembly, footprints, suggestions)
-    for warning in report.warnings:
-        print(f"jlcpick: {warning}", file=sys.stderr)
+    report = _assembly(args, with_swaps=not args.no_swaps)
     if args.json:
         print(json.dumps(asdict(report), indent=2, ensure_ascii=False))
     else:
@@ -129,6 +128,32 @@ def _bom(args: argparse.Namespace) -> None:
             f"jlcpick: extended parts paying the feeder fee: {', '.join(paying)}", file=sys.stderr
         )
         sys.exit(3)
+
+
+def _quote(args: argparse.Namespace) -> None:
+    fabrication = board.fabrication(_text(args.pcb))
+    price = jlc.board_price(fabrication, args.qty, args.color)
+    order = quote.quote(fabrication, price, args.color, _assembly(args, with_swaps=False))
+    if args.json:
+        print(json.dumps(asdict(order), indent=2, ensure_ascii=False))
+    else:
+        print(quote.text(order))
+
+
+def _assembly(args: argparse.Namespace, with_swaps: bool) -> bom.Report:
+    lines = bom_input.assembled(bom_input.read(_text(args.bom)), set(args.exclude))
+    footprints = None if args.pcb is None else board.footprints(_text(args.pcb))
+    codes = bom.codes(lines)
+    if len(codes) > 1:
+        seconds = len(codes) * http.pause("jlcpcb.com")
+        print(f"jlcpick: looking up {len(codes)} parts, about {seconds:.0f} s", file=sys.stderr)
+    parts = {code: jlc.part(code) for code in codes}
+    suggestions = _suggestions(parts) if with_swaps else None
+    name = (args.pcb or args.bom).stem
+    report = bom.report(name, lines, parts, args.qty, args.assembly, footprints, suggestions)
+    for warning in report.warnings:
+        print(f"jlcpick: {warning}", file=sys.stderr)
+    return report
 
 
 def _fab(pcb: Path, exclude: set[str], out: Path) -> None:
