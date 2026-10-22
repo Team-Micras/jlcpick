@@ -121,6 +121,8 @@ def _extent(shape: Sexpr) -> list[tuple[float, float]]:
     if shape[0] == "gr_circle":
         (x, y), r = at["center"], math.dist(at["center"], at["end"])
         return [(x - r, y - r), (x + r, y + r)]
+    if shape[0] == "gr_arc" and "mid" not in at:
+        raise BomError("an arc in the old KiCad 5 format; open and save the board in KiCad")
     if shape[0] == "gr_arc":
         return [at["start"], at["end"], *_arc_extremes(at["start"], at["mid"], at["end"])]
     corners = [

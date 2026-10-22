@@ -294,7 +294,7 @@ Problems (stderr, exit 3, after the files are written):
 | Code | Meaning |
 |---|---|
 | 0 | ok, possibly with warnings on stderr |
-| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `quote`, also a board without an Edge.Cuts outline or thickness, or JLC's calculator failing; for `fab`, no schematic next to the board, no LCSC field in it, an `--exclude` designator not on the board, KiKit missing or failing, or KiCad 10's footprints not found (set `KICAD10_FOOTPRINT_DIR`); for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
+| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `quote`, also a board without an Edge.Cuts outline or thickness, or with an arc in KiCad 5's format, or JLC's calculator failing; for `fab`, no schematic next to the board, no LCSC field in it, an `--exclude` designator not on the board, KiKit missing or failing, or KiCad 10's footprints not found (set `KICAD10_FOOTPRINT_DIR`); for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
 | 2 | invalid usage, e.g. a code that is not `C` + digits |
 | 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first. `fab`: a stock footprint without a checked rotation, or a stock through-hole one; the files are written first |
 

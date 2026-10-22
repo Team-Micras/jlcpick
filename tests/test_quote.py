@@ -200,6 +200,17 @@ def test_quote_exits_1_on_a_board_without_an_outline() -> None:
     assert exit_info.value.code == ("jlcpick: no board outline: draw it on the Edge.Cuts layer")
 
 
+def test_quote_exits_1_on_an_arc_in_kicad_5s_format() -> None:
+    outline = '(gr_arc (start 0 0) (end 10 0) (angle 90) (layer "Edge.Cuts") (width 0.05))'
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["quote", "bom.csv", "--pcb", board(outline)])
+
+    assert exit_info.value.code == (
+        "jlcpick: an arc in the old KiCad 5 format; open and save the board in KiCad"
+    )
+
+
 def test_quote_exits_1_when_the_calculator_fails(
     monkeypatch: pytest.MonkeyPatch, network: Callable[..., None]
 ) -> None:
