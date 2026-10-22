@@ -105,8 +105,8 @@ symbols and footprints it uses, from KiCad 10.0.7.
 
 `fab` runs [KiKit](https://github.com/yaqwsx/KiKit) (MIT). Its rotation corrections,
 `src/jlcpick/rotations.csv`, are the `cpl_rotations_db.csv` of
-[JLCKicadTools](https://github.com/matthewlai/JLCKicadTools) by Matthew Lai (GPL-3.0 or later),
-translated to KiKit's format.
+[JLCKicadTools](https://github.com/matthewlai/JLCKicadTools) by Matthew Lai and contributors
+(GPL-3.0; the text is in `LICENSES/GPL-3.0.txt`). jlcpick translates it to KiKit's format.
 
 Symbol, footprint and 3D conversion by [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py)
 (AGPL-3.0).

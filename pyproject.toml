@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "LICENSES/GPL-3.0.txt"]
 dependencies = [
     "easyeda2kicad==1.0.1",
 ]
