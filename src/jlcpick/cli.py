@@ -571,7 +571,7 @@ def _status(
         ]
     if status == "kept":
         return status, notes, {}
-    for file in [f for f in stale if f.suffix == ".kicad_mod" and not force]:
+    for file in [f for f in stale if f.suffix == ".kicad_mod" and present is None]:
         if pins := library.missing_pads(entry.symbol, _text(file)):
             sys.exit(
                 f"jlcpick: {part.lcsc}: {file.as_posix()} has no pad for pin {', '.join(pins)} "
