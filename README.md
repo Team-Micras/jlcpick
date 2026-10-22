@@ -66,8 +66,8 @@ jlcpick fab board.kicad_pcb --exclude U1
 `SUPPLIER PART` or another LCSC column name `bom` reads. Parts marked DNP, without a code, or in
 `--exclude` stay out of the BOM and the CPL. Footprints from KiCad's own libraries get the rotation
 corrections JLC needs; the project's own footprints and those converted from EasyEDA are already
-in JLC's orientation. A stock footprint with no known correction exits 3 after writing the files:
-check that part in JLC's preview.
+in JLC's orientation. A stock footprint with no known correction, or a stock through-hole one,
+exits 3 after writing the files: check that part in JLC's preview.
 
 KiKit needs KiCad's Python (`pcbnew`), so `fab` runs where both are: install `jlcpick[fab]` in a
 venv made with `--system-site-packages` from KiCad's Python, or use KiCad's Docker image from the
