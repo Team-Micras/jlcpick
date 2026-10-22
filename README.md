@@ -118,11 +118,14 @@ easyeda.com and 2 s to other sites.
 The same commands from KiCad 10's PCB editor, as four toolbar buttons that run jlcpick on the open
 board and show its report in a window:
 
-- **Audit BOM cost**: `bom` on the schematic's BOM, exported with KiCad's own `kicad-cli` and the
-  symbol field that holds most LCSC codes, with the board for joints and sides;
-- **Quote JLCPCB order**: `quote` on the same BOM and board;
+- **Audit BOM cost**: `bom` on the board's schematic, exported with KiCad's own `kicad-cli`, with
+  the board for joints and sides;
+- **Quote JLCPCB order**: `quote` on the same schematic and board;
 - **Add part by LCSC code**: `add` the codes typed, in the project's folder;
 - **Write JLCPCB files**: `fab` into the project's `jlcpcb` folder.
+
+Audit, Quote and Write save the board first, so they read what the editor shows; when KiCad cannot
+save it, they say so and stop. Save the schematic yourself: the plugin reaches only the PCB editor.
 
 To install it:
 
@@ -132,13 +135,24 @@ To install it:
    plugins folder as `jlcpick`: `~/.local/share/kicad/10.0/plugins` on Linux
    (`~/.var/app/org.kicad.KiCad/data/kicad/10.0/plugins` with Flatpak),
    `Documents\KiCad\10.0\plugins` on Windows, `~/Documents/KiCad/10.0/plugins` on macOS.
-3. Restart KiCad. It makes a Python environment for the plugin and installs jlcpick from GitHub
-   into it (with `git`, a minute or two); the buttons appear when that is done.
+3. Restart KiCad. It makes a Python environment for the plugin and installs into it the jlcpick
+   release the plugin names, tag `v0.2.0` from GitHub (with `git`, a minute or two); the buttons
+   appear when that is done. That first start needs the network, and the tag must be published:
+   until it is, KiCad never marks the plugin ready.
+
+To update, the release gets a new `version` in `pyproject.toml` and `kicad-plugin/metadata.json`,
+the same tag in `kicad-plugin/plugins/requirements.txt`, and that tag on GitHub; install the new
+plugin. If the buttons still run the old jlcpick, Preferences → Plugins → Recreate Plugin
+Environment. Once jlcpick is on PyPI, the requirement becomes `jlcpick==X.Y.Z` and needs no `git`.
+
+On Linux KiCad runs the plugin with the first `python3` on PATH. With pyenv, conda or uv's Python
+first, point Preferences → Plugins → Python interpreter at the system's Python, the one that
+imports `wx` and `pcbnew` (`/usr/bin/python3`).
 
 The plugin shows its reports with wxPython, which KiCad's Python has on Windows, macOS and
 Flatpak; on Debian and Ubuntu install `python3-wxgtk4.0`. KiCad installs only wheels and some of
 KiKit's dependencies have none, so the first Write JLCPCB files installs KiKit into the plugin's
-environment itself; it then uses KiCad's own `pcbnew`.
+environment itself; it then uses KiCad's own `pcbnew`. Cancel stops jlcpick and what it started.
 
 ## For agents
 

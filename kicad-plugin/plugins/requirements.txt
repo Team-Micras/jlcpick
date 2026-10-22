@@ -1,2 +1,2 @@
 kicad-python==0.8.0
-jlcpick @ git+https://github.com/Team-Micras/jlcpick
+jlcpick @ git+https://github.com/Team-Micras/jlcpick@v0.2.0

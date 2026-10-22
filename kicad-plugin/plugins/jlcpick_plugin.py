@@ -2,35 +2,34 @@
 
 import os
 import re
+import signal
 import subprocess
 import sys
-import tempfile
 from collections.abc import Callable
+from contextlib import suppress
 from importlib.metadata import requires
 from pathlib import Path
 from shutil import which
-
-from jlcpick.bom_input import lcsc_fields
 
 BIN = Path(sys.executable).parent
 NO_WX = (
     "jlcpick: the plugin shows its reports with wxPython, which KiCad's Python lacks; "
     "install it (python3-wxgtk4.0 on Debian and Ubuntu)"
 )
+NO_FAB_EXTRA = (
+    "The jlcpick installed for the plugin names no KiKit to install for fab; update the plugin, "
+    "or Recreate Plugin Environment in Preferences → Plugins"
+)
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def priced(command: str, pcb: Path, kicad_cli: str, csv: Path, qty: int) -> list[list[str]]:
-    """Export the schematic's BOM to ``csv`` with ``kicad-cli``, then run ``bom`` or ``quote``."""
-    sheets = (sheet.read_text(encoding="utf-8") for sheet in pcb.parent.glob("*.kicad_sch"))
-    field = next((name for name, _ in lcsc_fields(sheets).most_common(1)), "LCSC")
-    export = [
-        kicad_cli, "sch", "export", "bom", str(pcb.with_suffix(".kicad_sch")), "-o", str(csv),
-        "--ref-range-delimiter", "",
-        "--fields", f"Reference,Value,Footprint,QUANTITY,DNP,{field}",
-        "--labels", "Refs,Value,Footprint,Qty,DNP,LCSC",
-        "--group-by", f"Value,Footprint,{field},DNP",
+def priced(command: str, pcb: Path, kicad_cli: str, qty: int) -> list[list[str]]:
+    """Run ``bom`` or ``quote`` on the board's schematic, exported with KiCad's ``kicad-cli``."""
+    schematic = str(pcb.with_suffix(".kicad_sch"))
+    return [
+        [str(BIN / "jlcpick"), command, schematic, "--pcb", str(pcb), "--qty", str(qty),
+         "--kicad-cli", kicad_cli]
     ]  # fmt: skip
-    return [export, [str(BIN / "jlcpick"), command, str(csv), "--pcb", str(pcb), "--qty", str(qty)]]
 
 
 def add(codes: str) -> list[list[str]]:
@@ -40,19 +39,22 @@ def add(codes: str) -> list[list[str]]:
 
 def fab(pcb: Path) -> list[list[str]]:
     """Write the JLCPCB files into the project's ``jlcpcb`` folder, installing KiKit first when
-    it is missing."""
+    it is missing; raise `LookupError` when the jlcpick installed names no KiKit."""
     files = [str(BIN / "jlcpick"), "fab", str(pcb), "--out", str(pcb.parent / "jlcpcb")]
     if which("kikit", path=str(BIN)):
         return [files]
     extras = (r.partition(";") for r in requires("jlcpick") or [])
-    kikit = next(name.strip() for name, _, marker in extras if "fab" in marker)
-    return [[sys.executable, "-m", "pip", "install", kikit], files]
+    kikit = next((name.strip() for name, _, marker in extras if "fab" in marker), None)
+    if kikit is None:
+        raise LookupError(NO_FAB_EXTRA)
+    return [[sys.executable, "-m", "pip", "install", "--no-input", kikit], files]
 
 
 def run(steps: list[list[str]], cwd: Path, keep_going: Callable[[], bool]) -> tuple[int, str]:
     """Run ``steps`` until one fails; return its exit code and output, or the last one's.
 
-    ``keep_going`` is asked about ten times a second; when it says no, the step is killed.
+    ``keep_going`` is asked about ten times a second; when it says no, the step is killed with
+    the processes it started.
     """
     code, output = 0, ""
     for step in steps:
@@ -63,8 +65,9 @@ def run(steps: list[list[str]], cwd: Path, keep_going: Callable[[], bool]) -> tu
             stderr=subprocess.STDOUT,
             encoding="utf-8",
             errors="replace",
-            env={**os.environ, "PYTHONUTF8": "1"},
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1"},
+            creationflags=NO_WINDOW,
+            start_new_session=True,
         )
         while True:
             try:
@@ -72,11 +75,20 @@ def run(steps: list[list[str]], cwd: Path, keep_going: Callable[[], bool]) -> tu
                 break
             except subprocess.TimeoutExpired:
                 if not keep_going():
-                    process.kill()
+                    _kill(process)
         code = process.returncode
         if code:
             break
     return code, output
+
+
+def _kill(process: subprocess.Popen[str]) -> None:
+    if os.name == "nt":
+        kill = ["taskkill", "/F", "/T", "/PID", str(process.pid)]
+        subprocess.run(kill, capture_output=True, creationflags=NO_WINDOW)
+    else:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
 
 
 def main(action: str) -> None:
@@ -87,38 +99,52 @@ def main(action: str) -> None:
     except ImportError:
         sys.exit(NO_WX)
     from kipy import KiCad
+    from kipy.errors import ApiError
 
     kicad = KiCad()
     board = kicad.get_board()
     pcb = Path(board.get_project().path) / board.name
     app = wx.App()
     title = f"jlcpick {action}"
-    with tempfile.TemporaryDirectory() as scratch:
-        if action == "add":
-            codes = wx.GetTextFromUser("LCSC codes, e.g. C25744 C8734:", title)
-            if not codes.strip():
-                return
-            steps = add(codes)
-        elif action == "fab":
-            steps = fab(pcb)
-        else:
+    saved = ""
+    if action == "add":
+        codes = wx.GetTextFromUser("LCSC codes, e.g. C25744 C8734:", title)
+        if not codes.strip():
+            return
+        steps = add(codes)
+    else:
+        qty = 0
+        if action != "fab":
             qty = wx.GetNumberFromUser("Boards to make and assemble:", "", title, 5, 1, 100000)
             if qty < 0:
                 return
-            kicad_cli = kicad.get_kicad_binary_path("kicad-cli")
-            steps = priced(action, pcb, kicad_cli, Path(scratch) / "bom.csv", qty)
-        progress = wx.ProgressDialog(
-            title,
-            f"Running jlcpick {action} on {pcb.name}…",
-            style=wx.PD_APP_MODAL | wx.PD_CAN_ABORT | wx.PD_ELAPSED_TIME,
-        )
-        code, output = run(steps, pcb.parent, lambda: progress.Pulse()[0])
+        try:
+            board.save()
+        except ApiError as error:
+            warning = f"Could not save {pcb.name}, so jlcpick did not run:\n{error}"
+            wx.MessageBox(warning, title, wx.OK | wx.ICON_WARNING)
+            return
+        saved = f"Saved {pcb.name}.\n\n"
+        try:
+            if action == "fab":
+                steps = fab(pcb)
+            else:
+                steps = priced(action, pcb, kicad.get_kicad_binary_path("kicad-cli"), qty)
+        except LookupError as error:
+            wx.MessageBox(str(error), title, wx.OK | wx.ICON_WARNING)
+            return
+    progress = wx.ProgressDialog(
+        title,
+        f"{saved}Running jlcpick {action} on {pcb.name}…",
+        style=wx.PD_APP_MODAL | wx.PD_CAN_ABORT | wx.PD_ELAPSED_TIME,
+    )
+    code, output = run(steps, pcb.parent, lambda: progress.Pulse()[0])
     cancelled = progress.WasCancelled()
     progress.Destroy()
     if cancelled:
         return
     caption = f"{title} (exit {code})" if code else title
-    dialog = ScrolledMessageDialog(None, output, caption, size=(900, 600))
+    dialog = ScrolledMessageDialog(None, saved + output, caption, size=(900, 600))
     dialog.text.SetFont(wx.Font(wx.FontInfo(10).Family(wx.FONTFAMILY_TELETYPE)))
     dialog.text.SetInsertionPoint(0)
     dialog.ShowModal()

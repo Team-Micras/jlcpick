@@ -1,4 +1,7 @@
+import json
 import sys
+import time
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -7,17 +10,14 @@ import pytest
 from jlcpick_plugin import add, fab, priced, run
 from pack import pack
 
-SHEET = """(kicad_sch
-  (symbol (property "Reference" "R1") (property "SUPPLIER PART" "C25744"))
-  (symbol (property "Reference" "R2") (property "SUPPLIER PART" "C25744"))
-  (symbol (property "Reference" "U1") (property "LCSC PART NUMBER" "C8734")))"""
+ROOT = Path(__file__).parents[1]
 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    """A board whose schematic has most LCSC codes in ``SUPPLIER PART``, one in another field."""
+    """A board, with its schematic next to it."""
     (tmp_path / "board.kicad_pcb").write_text("(kicad_pcb)")
-    (tmp_path / "board.kicad_sch").write_text(SHEET)
+    (tmp_path / "board.kicad_sch").write_text("(kicad_sch)")
     return tmp_path / "board.kicad_pcb"
 
 
@@ -30,36 +30,18 @@ def bin_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     return folder
 
 
-def test_bom_exports_the_schematic_bom_with_its_lcsc_field(project: Path, bin_dir: Path) -> None:
-    steps = priced("bom", project, "/app/bin/kicad-cli", Path("/scratch/bom.csv"), 10)
+@pytest.mark.parametrize("command", ["bom", "quote"])
+def test_bom_and_quote_run_on_the_schematic_with_kicads_own_cli(
+    command: str, project: Path, bin_dir: Path
+) -> None:
+    steps = priced(command, project, "/app/bin/kicad-cli", 10)
 
     assert steps == [
         [
-            "/app/bin/kicad-cli", "sch", "export", "bom", str(project.with_suffix(".kicad_sch")),
-            "-o", "/scratch/bom.csv", "--ref-range-delimiter", "",
-            "--fields", "Reference,Value,Footprint,QUANTITY,DNP,SUPPLIER PART",
-            "--labels", "Refs,Value,Footprint,Qty,DNP,LCSC",
-            "--group-by", "Value,Footprint,SUPPLIER PART,DNP",
-        ],
-        [str(bin_dir / "jlcpick"), "bom", "/scratch/bom.csv", "--pcb", str(project), "--qty", "10"],
+            str(bin_dir / "jlcpick"), command, str(project.with_suffix(".kicad_sch")),
+            "--pcb", str(project), "--qty", "10", "--kicad-cli", "/app/bin/kicad-cli",
+        ]
     ]  # fmt: skip
-
-
-def test_quote_prices_the_exported_bom_with_the_board(project: Path, bin_dir: Path) -> None:
-    steps = priced("quote", project, "kicad-cli", Path("/scratch/bom.csv"), 5)
-
-    assert steps[0][-1] == "Value,Footprint,SUPPLIER PART,DNP"
-    assert steps[1] == [
-        str(bin_dir / "jlcpick"), "quote", "/scratch/bom.csv", "--pcb", str(project), "--qty", "5"
-    ]  # fmt: skip
-
-
-def test_a_schematic_without_lcsc_codes_exports_lcsc(project: Path, bin_dir: Path) -> None:
-    project.with_suffix(".kicad_sch").write_text('(kicad_sch (property "SUPPLIER PART" ""))')
-
-    steps = priced("bom", project, "kicad-cli", Path("bom.csv"), 5)
-
-    assert steps[0][-1] == "Value,Footprint,LCSC,DNP"
 
 
 def test_add_passes_each_code_typed(bin_dir: Path) -> None:
@@ -82,8 +64,26 @@ def test_fab_writes_into_the_project_jlcpcb_folder(project: Path, bin_dir: Path)
 def test_fab_installs_the_kikit_jlcpick_pins_when_missing(project: Path, bin_dir: Path) -> None:
     steps = fab(project)
 
-    assert steps[0] == [sys.executable, "-m", "pip", "install", "kikit==1.8.1"]
+    assert steps[0] == [sys.executable, "-m", "pip", "install", "--no-input", "kikit==1.8.1"]
     assert steps[1][1:3] == ["fab", str(project)]
+
+
+def test_fab_says_what_to_do_when_the_jlcpick_installed_names_no_kikit(
+    monkeypatch: pytest.MonkeyPatch, project: Path, bin_dir: Path
+) -> None:
+    monkeypatch.setattr(jlcpick_plugin, "requires", lambda _: ["easyeda2kicad==1.0.1"])
+
+    with pytest.raises(LookupError, match="Recreate Plugin Environment"):
+        fab(project)
+
+
+def test_the_plugin_installs_the_jlcpick_release_it_is_packed_with() -> None:
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    metadata = json.loads((ROOT / "kicad-plugin/metadata.json").read_text())
+    requirements = (ROOT / "kicad-plugin/plugins/requirements.txt").read_text().splitlines()
+
+    assert [v["version"] for v in metadata["versions"]] == [version]
+    assert f"jlcpick @ git+https://github.com/Team-Micras/jlcpick@v{version}" in requirements
 
 
 def test_run_returns_the_last_output(tmp_path: Path) -> None:
@@ -105,12 +105,15 @@ def test_run_stops_at_the_first_failure(tmp_path: Path) -> None:
     assert not (tmp_path / "ran").exists()
 
 
-def test_run_kills_the_step_when_cancelled(tmp_path: Path) -> None:
-    steps = [[sys.executable, "-c", "import time; time.sleep(60)"]]
+def test_run_kills_the_step_and_what_it_started_when_cancelled(tmp_path: Path) -> None:
+    sleep = "import time; time.sleep(60)"
+    child = f"import subprocess, sys; subprocess.Popen([sys.executable, '-c', {sleep!r}]); {sleep}"
+    started = time.monotonic()
 
-    code, _ = run(steps, tmp_path, lambda: False)
+    code, _ = run([[sys.executable, "-c", child]], tmp_path, lambda: False)
 
     assert code != 0
+    assert time.monotonic() - started < 10
 
 
 def test_pack_writes_the_layout_kicad_installs(tmp_path: Path) -> None:
