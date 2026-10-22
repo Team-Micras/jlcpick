@@ -133,15 +133,22 @@ def _bom(args: argparse.Namespace) -> None:
 
 def _fab(pcb: Path, exclude: set[str], out: Path) -> None:
     placed = board.footprints(_text(pcb))
+    unknown = exclude - placed.keys()
+    if unknown:
+        raise BomError(f"--exclude: not on the board: {', '.join(sorted(unknown))}")
     stock = {p.stem for p in _kicad_dir("KICAD10_FOOTPRINT_DIR", "footprints").glob("*.pretty")}
     table, unchecked = fab.corrections((f.name for f in placed.values()), stock)
+    fields = _lcsc_fields(pcb)
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out) as scratch:
         work = Path(scratch)
-        _kikit(pcb, table, work)
+        _kikit(pcb, fields, table, work)
         listed, placements = _text(work / "bom.csv"), _text(work / "pos.csv")
         lines = bom_input.read(listed)
-        kept = bom_input.assembled(lines, exclude)
+        in_bom = {d for line in lines for d in line.designators}
+        if lost := in_bom - placed.keys():
+            raise BomError(f"KiKit's BOM lists {', '.join(sorted(lost))}, not found on the board")
+        kept = bom_input.assembled(lines, exclude & in_bom)
         os.replace(work / "gerbers.zip", out / "gerbers.zip")
     keep = {d for line in kept if line.lcsc for d in line.designators}
     uncoded = sorted(d for line in kept if not line.lcsc for d in line.designators)
@@ -151,16 +158,22 @@ def _fab(pcb: Path, exclude: set[str], out: Path) -> None:
     (out / "pos.csv").write_text(fab.only(placements, keep), encoding="utf-8", newline="")
     codes = {line.lcsc for line in kept if line.lcsc}
     print(f"{out}: gerbers.zip, bom.csv, pos.csv; {len(keep)} parts, {len(codes)} LCSC codes")
-    in_bom = {d for line in lines for d in line.designators}
-    in_cpl = fab.designators(placements)
+    through_hole = {d for d in keep if placed[d].tht and placed[d].name.partition(":")[0] in stock}
     problems = [
         f"{label}: {', '.join(sorted(names))}"
         for label, names in (
-            ("in the CPL but not the BOM", in_cpl - in_bom),
-            ("in the BOM but not the CPL", in_bom - in_cpl),
             (
                 "no checked rotation for KiCad's footprint, check it in JLC's preview",
-                {f"{d} ({placed[d].name})" for d in keep if placed[d].name in unchecked},
+                {
+                    f"{d} ({placed[d].name})"
+                    for d in keep - through_hole
+                    if placed[d].name in unchecked
+                },
+            ),
+            (
+                "KiCad's through-hole footprint is placed by its pin 1, check its position in "
+                "JLC's preview",
+                {f"{d} ({placed[d].name})" for d in through_hole},
             ),
         )
         if names
@@ -171,13 +184,13 @@ def _fab(pcb: Path, exclude: set[str], out: Path) -> None:
         sys.exit(3)
 
 
-def _kikit(pcb: Path, corrections: str, out: Path) -> None:
+def _lcsc_fields(pcb: Path) -> set[str]:
     schematic = pcb.with_suffix(".kicad_sch")
     if not schematic.exists():
         raise BomError(f"{schematic} not found; fab reads the LCSC codes from it")
     fields = {
         name
-        for sheet in pcb.parent.rglob("*.kicad_sch")
+        for sheet in pcb.parent.glob("*.kicad_sch")
         for name in re.findall(r'\(property "([^"]+)"', _text(sheet))
         if name.lower() in bom_input.COLUMNS["lcsc"]
     }
@@ -186,10 +199,15 @@ def _kikit(pcb: Path, corrections: str, out: Path) -> None:
             f"{schematic}: no symbol field holds LCSC codes; name it one of: "
             + ", ".join(bom_input.COLUMNS["lcsc"])
         )
-    path = os.pathsep.join([os.environ.get("PATH", ""), str(Path(sys.executable).parent)])
-    kikit = shutil.which("kikit", path=path)
+    return fields
+
+
+def _kikit(pcb: Path, fields: set[str], corrections: str, out: Path) -> None:
+    here = shutil.which("kikit", path=str(Path(sys.executable).parent))
+    kikit = here or shutil.which("kikit")
     if kikit is None:
         sys.exit(NO_KIKIT)
+    schematic = pcb.with_suffix(".kicad_sch")
     command = [kikit, "fab", "jlcpcb", "--no-drc", "--assembly", "--schematic", str(schematic)]
     command += ["--field", ",".join(sorted(fields))]
     if corrections:

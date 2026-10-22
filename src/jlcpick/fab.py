@@ -14,8 +14,9 @@ def corrections(footprints: Iterable[str], stock: Collection[str]) -> tuple[str,
     and the stock footprints the table lacks.
 
     ``footprints`` are ``Library:Footprint`` names and ``stock`` the names of KiCad's own
-    libraries; footprints of other libraries, converted from EasyEDA or drawn by the team, are
-    already in JLC's orientation. The first row of ``rotations.csv`` that matches a footprint is
+    libraries. Footprints converted from EasyEDA are assumed to be in JLC's orientation, as EasyEDA
+    draws them; those the team drew to KiCad's standard get no correction either, so check them in
+    JLC's preview. The first row of ``rotations.csv`` that matches a footprint is
     its row, as in KiKit, written anchored on that footprint alone.
     """
     rows = list(csv.reader(line for line in ROTATIONS.splitlines() if not line.startswith("#")))
@@ -33,11 +34,6 @@ def corrections(footprints: Iterable[str], stock: Collection[str]) -> tuple[str,
     out = io.StringIO()
     csv.writer(out, quoting=csv.QUOTE_ALL).writerows([rows[0], *corrected])
     return out.getvalue(), unchecked
-
-
-def designators(text: str) -> set[str]:
-    """Every designator in KiKit's BOM or CPL."""
-    return {d for row in csv.DictReader(io.StringIO(text)) for d in row["Designator"].split(",")}
 
 
 def only(text: str, keep: Collection[str]) -> str:

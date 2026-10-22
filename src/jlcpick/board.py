@@ -35,7 +35,14 @@ def footprints(pcb: str) -> dict[str, Footprint]:
         if not (isinstance(node, list) and node[:1] == ["footprint"]):
             continue
         children = [child for child in node if isinstance(child, list) and child]
-        reference = next((c[2] for c in children if c[:2] == ["property", "Reference"]), "")
+        reference = next(
+            (
+                c[2]
+                for c in children
+                if len(c) > 2 and c[:2] in (["property", "Reference"], ["fp_text", "reference"])
+            ),
+            "",
+        )
         if not isinstance(reference, str) or not reference:
             continue
         pads = [c for c in children if c[0] == "pad" and len(c) > 2 and c[2] in _SOLDERED]

@@ -225,9 +225,10 @@ and `--exclude` designators stay out of both the BOM and the CPL, as in `bom`. K
 skipped: run it in KiCad.
 
 Rotations: footprints from KiCad's own libraries get the corrections of
-[JLCKicadTools](https://github.com/matthewlai/JLCKicadTools) (`src/jlcpick/rotations.csv`); the
-project's footprints, drawn by the team or converted from EasyEDA, are already in JLC's
-orientation and get none. Positions are the footprint's origin.
+[JLCKicadTools](https://github.com/matthewlai/JLCKicadTools) (`src/jlcpick/rotations.csv`). The
+project's footprints get none: those converted from EasyEDA are assumed to be in JLC's
+orientation, as EasyEDA draws them, and those the team drew to KiCad's standard are not
+corrected, so check them in JLC's preview. Positions are the footprint's origin.
 
 `fab` needs KiKit and KiCad's Python (`pcbnew`): install `jlcpick[fab]` in a Python that imports
 `pcbnew` (a venv made with `--system-site-packages` from KiCad's Python), or run it in Docker as
@@ -237,16 +238,17 @@ Problems (stderr, exit 3, after the files are written):
 
 - `no checked rotation for KiCad's footprint, check it in JLC's preview: D1 (LED_SMD:…)`: the
   table has no row for that stock footprint; check the part in JLC's preview before ordering.
-- `in the CPL but not the BOM: …` or `in the BOM but not the CPL: …`: KiKit's files disagree.
+- `KiCad's through-hole footprint is placed by its pin 1, check its position in JLC's preview:
+  …`: the CPL gives the footprint's origin, which is pin 1 there, not the part's center.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | ok, possibly with warnings on stderr |
-| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `fab`, no schematic next to the board, no LCSC field in it, or KiKit missing or failing; for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
+| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `fab`, no schematic next to the board, no LCSC field in it, an `--exclude` designator not on the board, or KiKit missing or failing; for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
 | 2 | invalid usage, e.g. a code that is not `C` + digits |
-| 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first. `fab`: a stock footprint without a checked rotation, or a CPL and BOM that list different designators; the files are written first |
+| 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first. `fab`: a stock footprint without a checked rotation, or a stock through-hole one; the files are written first |
 
 ## Limits
 

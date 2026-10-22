@@ -22,7 +22,7 @@ SWAPPED_AFTER_10973279A = {
     "C23": "C5137554 in the order, then the schematic took C1549, the basic 18 pF C0G swap",
 }
 CENTERED_BY_ALTIUM = {
-    "Q3": "Altium centers the pads' box on the board's axes: for this SOT-23 turned 45°, 0.47 mm"
+    "Q3": "Altium centers the pads' box on the board's axes: for this SOT-23 turned 225°, 0.47 mm"
     " from the part's center, which KiKit places",
     "Q4": "the same as Q3, turned 315°",
 }
@@ -184,19 +184,128 @@ def test_fab_exits_3_on_a_kicad_footprint_whose_rotation_nobody_checked(
     ]
 
 
-@pytest.mark.usefixtures("kikit")
-def test_fab_exits_3_when_the_cpl_and_the_bom_list_different_parts(
+@pytest.fixture
+def libraries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """KiCad's footprint libraries named in the tests below, all empty."""
+    for nickname in ("Connector_USB", "Connector_PinHeader_1.27mm", "Connector_PinHeader_2.54mm"):
+        (tmp_path / "libraries" / f"{nickname}.pretty").mkdir(parents=True)
+    monkeypatch.setenv("KICAD10_FOOTPRINT_DIR", str(tmp_path / "libraries"))
+
+
+@pytest.mark.usefixtures("kikit", "libraries")
+def test_fab_leaves_footprints_whose_original_offset_was_in_the_boards_axes_unchecked(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    record('Designator,LCSC\n"R1,R2",C1\n', "Designator,Rotation\nR1,0\nR3,0\n")
+    record("Designator,LCSC\nJ1,C1\nJ2,C1\n", "Designator,Rotation\nJ1,0\nJ2,0\n")
 
     with pytest.raises(SystemExit) as exit_info:
-        main(["fab", board(*((r, "MicrasLib:R0402") for r in ("R1", "R2", "R3")))])
+        main(
+            [
+                "fab",
+                board(
+                    ("J1", "Connector_USB:USB_C_Receptacle_XKB_U262-16XN-4BVC11"),
+                    ("J2", "Connector_PinHeader_1.27mm:PinHeader_2x05_P1.27mm_Vertical"),
+                ),
+            ]
+        )
+
+    assert exit_info.value.code == 3
+    assert json.loads(Path("seen.json").read_text())["corrections"] is None
+    assert capsys.readouterr().err == (
+        "jlcpick: no checked rotation for KiCad's footprint, check it in JLC's preview: "
+        "J1 (Connector_USB:USB_C_Receptacle_XKB_U262-16XN-4BVC11), "
+        "J2 (Connector_PinHeader_1.27mm:PinHeader_2x05_P1.27mm_Vertical)\n"
+    )
+
+
+@pytest.mark.usefixtures("kikit", "libraries")
+def test_fab_exits_3_on_a_kicad_through_hole_footprint_that_is_placed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    record("Designator,LCSC\nJ1,C1\n", "Designator,Rotation\nJ1,0\n")
+    Path("board.kicad_pcb").write_text(
+        '(kicad_pcb (footprint "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"'
+        ' (layer "F.Cu") (property "Reference" "J1") (attr through_hole)'
+        ' (pad "1" thru_hole) (pad "2" thru_hole)))\n'
+    )
+    Path("board.kicad_sch").write_text('(property "LCSC" "C1")\n')
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fab", "board.kicad_pcb"])
 
     assert exit_info.value.code == 3
     assert capsys.readouterr().err == (
-        "jlcpick: in the CPL but not the BOM: R3\njlcpick: in the BOM but not the CPL: R2\n"
+        "jlcpick: KiCad's through-hole footprint is placed by its pin 1, check its position in "
+        "JLC's preview: J1 (Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical)\n"
     )
+
+
+@pytest.mark.usefixtures("kikit")
+def test_fab_reads_the_designators_of_a_kicad_7_board(capsys: pytest.CaptureFixture[str]) -> None:
+    record("Designator,LCSC\nQ1,C1\n", "Designator,Rotation\nQ1,0\n")
+    Path("board.kicad_pcb").write_text(
+        '(kicad_pcb (version 20221018) (footprint "Package_TO_SOT_SMD:SOT-23" (layer "F.Cu")'
+        ' (fp_text reference "Q1" (at 0 0)) (pad "1" smd) (pad "2" smd) (pad "3" smd)))\n'
+    )
+    Path("board.kicad_sch").write_text('(property "LCSC" "C1")\n')
+
+    run("fab", "board.kicad_pcb")
+
+    assert '"-90"' in json.loads(Path("seen.json").read_text())["corrections"]
+    assert Path("jlcpcb/bom.csv").read_text().splitlines() == ["Designator,LCSC", "Q1,C1"]
+
+
+@pytest.mark.usefixtures("kikit")
+def test_fab_writes_nothing_when_kikit_lists_a_part_the_board_lacks() -> None:
+    record('Designator,LCSC\n"R1,R2",C1\n', "Designator,Rotation\nR1,0\nR2,0\n")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fab", board(("R1", "MicrasLib:R0402"))])
+
+    assert str(exit_info.value.code) == "jlcpick: KiKit's BOM lists R2, not found on the board"
+    assert not Path("jlcpcb/gerbers.zip").exists()
+    assert not Path("jlcpcb/bom.csv").exists()
+
+
+@pytest.mark.usefixtures("kikit")
+def test_fab_accepts_excluding_a_part_that_is_do_not_place() -> None:
+    record(
+        "Designator,LCSC,DNP\nR1,C1,\nR2,C1,Yes\n",
+        "Designator,Rotation\nR1,0\n",
+    )
+
+    run("fab", board(("R1", "MicrasLib:R0402"), ("R2", "MicrasLib:R0402")), "--exclude", "R2")
+
+    assert Path("jlcpcb/bom.csv").read_text().splitlines() == ["Designator,LCSC,DNP", "R1,C1,"]
+
+
+@pytest.mark.usefixtures("kikit")
+def test_fab_rejects_excluding_a_part_that_is_not_on_the_board() -> None:
+    record("Designator,LCSC\nR1,C1\n", "Designator,Rotation\nR1,0\n")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fab", board(("R1", "MicrasLib:R0402")), "--exclude", "R9"])
+
+    assert str(exit_info.value.code) == "jlcpick: --exclude: not on the board: R9"
+
+
+@pytest.mark.usefixtures("kikit")
+def test_fab_prefers_the_kikit_next_to_the_python_that_runs_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record("Designator,LCSC\nR1,C1\n", "Designator,Rotation\nR1,0\n")
+    beside = Path("venv/bin")
+    beside.mkdir(parents=True)
+    (beside / "kikit").write_text(
+        f"#!{sys.executable}\nprint('from beside')\nraise SystemExit(1)\n"
+    )
+    (beside / "kikit").chmod(0o755)
+    monkeypatch.setattr(sys, "executable", str(beside / "python"))
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fab", board(("R1", "MicrasLib:R0402"))])
+
+    assert "from beside" in str(exit_info.value.code)
 
 
 @pytest.mark.usefixtures("kikit")
