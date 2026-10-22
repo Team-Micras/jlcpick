@@ -25,7 +25,10 @@ KICAD_SHARES = (
 )
 
 
-KICAD_10 = '(generator_version "10.0")'
+KICAD_10 = {
+    "symbols": ("Device.kicad_sym", '(generator_version "10.0")'),
+    "footprints": ("Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod", "(version 2026"),
+}
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -262,7 +265,8 @@ def _kicad_dir(variable: str, kind: str) -> Path:
     found = [
         Path(p) for share in KICAD_SHARES for p in glob.glob(os.path.expanduser(f"{share}/{kind}"))
     ]
-    current = [p for p in found if KICAD_10 in _head(p.parent / "symbols" / "Device.kicad_sym")]
+    sample, mark = KICAD_10[kind]
+    current = [p for p in found if mark in _head(p / sample)]
     if not current:
         other = f" (the KiCad found, {found[0].parent}, is another version)" if found else ""
         sys.exit(f"jlcpick: KiCad 10's {kind} not found{other}; install KiCad 10 or set {variable}")

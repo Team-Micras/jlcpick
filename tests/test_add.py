@@ -205,6 +205,23 @@ def test_add_finds_kicad_where_it_is_installed(monkeypatch: pytest.MonkeyPatch) 
     assert R_10K in library.symbols(LIBRARY.read_text())
 
 
+def test_add_finds_kicads_symbols_and_footprints_installed_apart(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for kind in ("symbols", "footprints"):
+        (tmp_path / kind).mkdir()
+        (tmp_path / kind / kind).symlink_to(KICAD / kind)
+    monkeypatch.delenv("KICAD10_SYMBOL_DIR")
+    monkeypatch.delenv("KICAD10_FOOTPRINT_DIR")
+    monkeypatch.setattr(
+        "jlcpick.cli.KICAD_SHARES", (str(tmp_path / "symbols"), str(tmp_path / "footprints"))
+    )
+
+    run("add", "C25744")
+
+    assert R_10K in library.symbols(LIBRARY.read_text())
+
+
 @pytest.mark.parametrize(
     ("symbol", "footprint"),
     [(s, f) for s, rule in library.PACKAGES.items() for f in rule["footprints"]],
