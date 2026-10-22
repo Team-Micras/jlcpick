@@ -245,7 +245,7 @@ def _fab(pcb: Path, exclude: set[str], out: Path) -> None:
 def _bom_csv(path: Path, kicad_cli: Path | None) -> str:
     if path.suffix != ".kicad_sch":
         return _text(path)
-    fields = sorted(_lcsc_fields(path))
+    fields = _lcsc_fields(path)
     schematic = path.resolve()
     with tempfile.TemporaryDirectory(dir=schematic.parent) as scratch:
         csv = Path(scratch) / "bom.csv"
@@ -274,10 +274,11 @@ def _kicad_cli(given: Path | None) -> list[str]:
     sys.exit(NO_KICAD_CLI)
 
 
-def _lcsc_fields(schematic: Path) -> set[str]:
+def _lcsc_fields(schematic: Path) -> list[str]:
     if not schematic.exists():
         raise BomError(f"{schematic} not found; the LCSC codes are read from it")
-    fields = set(bom_input.lcsc_fields(_text(s) for s in schematic.parent.glob("*.kicad_sch")))
+    found = bom_input.lcsc_fields(_text(s) for s in schematic.parent.glob("*.kicad_sch"))
+    fields = sorted(found, key=lambda name: (bom_input.COLUMNS["lcsc"].index(name.lower()), name))
     if not fields:
         raise BomError(
             f"{schematic}: no symbol field holds LCSC codes; name it one of: "
@@ -286,14 +287,14 @@ def _lcsc_fields(schematic: Path) -> set[str]:
     return fields
 
 
-def _kikit(pcb: Path, fields: set[str], corrections: str, out: Path) -> None:
+def _kikit(pcb: Path, fields: list[str], corrections: str, out: Path) -> None:
     here = shutil.which("kikit", path=str(Path(sys.executable).parent))
     kikit = here or shutil.which("kikit")
     if kikit is None:
         sys.exit(NO_KIKIT)
     schematic = pcb.with_suffix(".kicad_sch")
     command = [kikit, "fab", "jlcpcb", "--no-drc", "--assembly", "--schematic", str(schematic)]
-    command += ["--field", ",".join(sorted(fields))]
+    command += ["--field", ",".join(fields)]
     if corrections:
         (out / "corrections.csv").write_text(corrections, encoding="utf-8")
         command += ["--correctionpatterns", str(out / "corrections.csv")]

@@ -133,7 +133,8 @@ jlcpick bom board.kicad_sch --pcb board.kicad_pcb --qty 5 --json
 
 Given a `.kicad_sch`, `bom` exports its BOM with `kicad-cli`, reading the code from every symbol
 field named like a BOM's LCSC column (`LCSC`, `LCSC Part #`, `SUPPLIER PART`…) that holds one in
-any sheet of the folder, the fields `fab` reads; codes in lowercase or with spaces count. It finds
+any sheet of the folder, the fields `fab` reads; a symbol with codes in two of them gets, in both,
+the one in the field listed first. Codes in lowercase or with spaces count. It finds
 `kicad-cli` on PATH, then in KiCad 10's macOS and Windows install folders, then in KiCad's Flatpak
 (which sees only files under the home folder); `--kicad-cli PATH` names it. Not found, or failing,
 it exits 1 with KiCad's output.
