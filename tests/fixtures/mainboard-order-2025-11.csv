@@ -1,0 +1,56 @@
+lcsc,designators,tier,preferred,tht
+C2938919,L2,extended,false,false
+C412252,C56,extended,false,false
+C2839926,L3,extended,false,false
+C2862009,U1,extended,false,false
+C338080,C46 C47,extended,false,false
+C3293150,SW1,extended,false,false
+C391031,BZ1,extended,false,false
+C778165,SW2 SW3 SW5,extended,false,false
+C2903562,Q6,extended,false,false
+C22371529,D1 D2,extended,false,false
+C2994645,R31,extended,false,false
+C24253,U3,extended,false,false
+C2988369,U2,extended,false,false
+C41347750,L1,extended,false,false
+C42441131,F1,extended,false,false
+C51953404,C37,extended,false,false
+C22383774,C36,extended,false,false
+C45783,C49 C50 C51 C57,basic,false,false
+C20917,Q1 Q2 Q3 Q4 Q5,basic,false,false
+C440198,C44 C45,basic,false,false
+C963202,SW4,extended,false,true
+C89811,D4,extended,true,false
+C307331,C5 C6 C7 C8 C10 C12 C13 C14 C15 C16 C18 C19 C20 C21 C24 C25 C32 C38 C55 C60,basic,false,false
+C96446,C1 C3 C4 C52,basic,false,false
+C7420318,D3 D6 D7,extended,true,false
+C52923,C9 C11 C26 C27 C28 C29 C33 C53 C54,basic,false,false
+C1537,C42,extended,true,false
+C1779,C48,basic,false,false
+C23733,C2 C17,basic,false,false
+C25796,R37,extended,true,false
+C1623,C34 C35,basic,false,false
+C36871,R38,extended,true,false
+C5378,C39,basic,false,false
+C25744,R2 R12 R16 R20 R24 R42,basic,false,false
+C22859,R3 R13 R17 R21 R25,basic,false,false
+C25783,R27,extended,true,false
+C22795,R40,extended,true,false
+C15195,C30 C40 C41,basic,false,false
+C21120,C43,basic,false,false
+C2286,D5,basic,false,false
+C25091,R1 R11 R15 R19 R23,basic,false,false
+C25130,R4 R5,extended,true,false
+C25769,R28,extended,true,false
+C25798,R29,extended,true,false
+C25908,R30,extended,true,false
+C25755,R36,extended,true,false
+C1549,C22 C23,basic,false,false
+C16772,C31,basic,false,false
+C25905,R6 R7,basic,false,false
+C25867,R10,basic,false,false
+C11702,R14 R18 R22 R26,basic,false,false
+C25741,R35 R41,basic,false,false
+C22976,R39,basic,false,false
+C25105,R8 R9,basic,false,false
+C25076,R34,basic,false,false

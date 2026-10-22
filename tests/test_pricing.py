@@ -1,5 +1,8 @@
 """Fee scenarios of Bouni's common/test_bom_estimator_pricing.py, at the 2026-09-09 fees."""
 
+import csv
+from pathlib import Path
+
 import pytest
 
 from jlcpick import pricing
@@ -56,13 +59,34 @@ def test_an_extended_smt_part_pays_its_fee_once_and_the_price_at_its_break() -> 
     assert fees.total_usd == 12.80
 
 
-def test_a_tht_part_pays_hand_soldering_and_no_feeder_or_stencil() -> None:
+def test_a_tht_part_pays_hand_soldering_and_the_feeder_but_no_stencil() -> None:
     tht = pricing.Placement(part("C777", "extended"), units=1, tht=True, joints=10)
 
     fees = pricing.fees("economic", [tht], sides=1)
 
-    assert (fees.stencil_usd, fees.feeder_parts, fees.manual_usd) == (0.0, (), 3.74)
-    assert fees.total_usd == 11.92
+    assert (fees.stencil_usd, fees.feeder_parts, fees.manual_usd) == (0.0, ("C777",), 3.74)
+    assert fees.total_usd == 14.99
+
+
+def test_the_real_mainboard_order_pays_18_feeder_fees_with_its_tht_switch() -> None:
+    """JLC charged 18 extended fees on the MicrasMainBoard order of 2025-11-26 (Economic, 2
+    assembled), one of them for the through-hole slide switch SW4."""
+    with (Path(__file__).parent / "fixtures/mainboard-order-2025-11.csv").open() as file:
+        rows = list(csv.DictReader(file))
+    placements = [
+        pricing.Placement(
+            part(row["lcsc"], row["tier"], row["preferred"] == "true"),
+            units=2 * len(row["designators"].split()),
+            tht=row["tht"] == "true",
+            joints=1,
+        )
+        for row in rows
+    ]
+
+    fees = pricing.fees("economic", placements, sides=1)
+
+    assert len(fees.feeder_parts) == 18
+    assert "C963202" in fees.feeder_parts
 
 
 def test_standard_charges_a_feeder_for_every_smt_part() -> None:
@@ -132,6 +156,7 @@ def test_xray_is_charged_per_unit_of_leadless_packages(package: str, leadless: b
     fees = pricing.fees("economic", [placement], sides=1)
 
     assert (fees.xray_units, fees.xray_usd) == ((10, 16.4) if leadless else (0, 0.0))
+    assert fees.total_usd == 9.73
 
 
 @pytest.mark.parametrize("assembly", ["economic", "standard"])

@@ -37,7 +37,8 @@ class Extended:
 
 @dataclass(frozen=True)
 class Quote:
-    """A whole order for ``qty`` boards, before shipping and taxes."""
+    """A whole order of ``qty`` boards made, ``pcba.qty`` of them assembled, before shipping and
+    taxes."""
 
     name: str
     qty: int
@@ -47,8 +48,10 @@ class Quote:
     total_usd: float
 
 
-def quote(fabrication: Fabrication, price: BoardPrice, color: str, pcba: bom.Report) -> Quote:
-    """Add the boards JLC priced at ``price`` to the assembly ``pcba``."""
+def quote(
+    fabrication: Fabrication, price: BoardPrice, color: str, qty: int, pcba: bom.Report
+) -> Quote:
+    """Add the ``qty`` boards JLC priced at ``price`` to the assembly ``pcba``."""
     board = Board(
         width_mm=fabrication.width_mm,
         length_mm=fabrication.length_mm,
@@ -66,7 +69,7 @@ def quote(fabrication: Fabrication, price: BoardPrice, color: str, pcba: bom.Rep
     usd = round(feeder + extra, 2)
     return Quote(
         name=pcba.name,
-        qty=pcba.qty,
+        qty=qty,
         board=board,
         pcba=pcba,
         extended=Extended(len(extended), feeder, extra, usd, round(100 * usd / total, 1)),
@@ -90,12 +93,13 @@ def text(quote: Quote) -> str:
     heaviest = sorted(extended_lines, key=lambda line: -_weight(line, feeder_each))[:5]
     heaviest = [line for line in heaviest if _weight(line, feeder_each) > 0]
     preferred = sum(line.preferred for line in extended_lines)
+    assembled = f", {pcba.qty} assembled" if pcba.qty != quote.qty else ""
     left_out = "shipping, taxes and customs"
     if pcba.assembly == "standard":
         left_out += "; packing, fixture and the per-board batch fee of Standard"
     return "\n".join(
         [
-            f"{quote.name}  ×{quote.qty}  {pcba.assembly.capitalize()}",
+            f"{quote.name}  ×{quote.qty}{assembled}  {pcba.assembly.capitalize()}",
             "",
             f"  board      US$ {board.usd:.2f}   builds in {board.build_time}",
             f"             {board.layers} layers · {board.width_mm:g} × {board.length_mm:g} mm · "
@@ -104,6 +108,7 @@ def text(quote: Quote) -> str:
             f"fees {pcba.fees.total_usd:.2f}, fees as of {pcba.fees_as_of}",
             f"  total      US$ {quote.total_usd:.2f}   per board US$ "
             f"{quote.total_usd / quote.qty:.2f}",
+            *bom.xray(pcba.fees),
             f"  extended   US$ {extended.usd:.2f}, {extended.share_pct:.1f} % of the total",
             f"             feeder {extended.feeder_usd:.2f} + units beyond those placed "
             f"{extended.extra_units_usd:.2f}, on {extended.parts} extended parts "

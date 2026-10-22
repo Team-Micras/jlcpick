@@ -3,10 +3,11 @@ MicrasMainBoard  ×5  Economic
 
   board      US$ 8.00   builds in 3-4 days
              4 layers · 50 × 90 mm · 1.0 mm (board file 1.0412) · green · HASL
-  assembly   US$ 362.82   parts 254.55 + fees 108.27, fees as of 2026-09-09
-  total      US$ 370.82   per board US$ 74.16
-  extended   US$ 76.54, 20.6 % of the total
-             feeder 73.68 + units beyond those placed 2.86, on 39 extended parts (12 preferred)
+  assembly   US$ 355.63   parts 254.55 + fees 101.08, fees as of 2026-09-09
+  total      US$ 363.63   per board US$ 72.73
+  x-ray      if JLC requires it: +US$ 16.40   20 leadless × 0.82
+  extended   US$ 85.75, 23.6 % of the total
+             feeder 82.89 + units beyond those placed 2.86, on 39 extended parts (12 preferred)
              C154679   US$  3.46  LR2512-22R040F4
              C2994645  US$  3.41  HoLLR2512-3W-50mR-1%
              C24253    US$  3.33  CJA1117B-3.3

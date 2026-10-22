@@ -131,6 +131,25 @@ def test_quote_json_adds_the_boards_to_the_assembly_and_weighs_the_extended_part
     assert all(line["swap"] is None for line in pcba["lines"])
 
 
+def test_quote_assembles_fewer_boards_than_it_makes(
+    capsys: pytest.CaptureFixture[str], sent: list[dict[str, Any]]
+) -> None:
+    order = quote_json(capsys, *MAINBOARD, "--qty", "5", "--assemble", "2")
+    run(*MAINBOARD, "--qty", "5", "--assemble", "2")
+
+    assert sent[0]["pcbGoodsRequest"]["stencilCounts"] == 5
+    assert (order["qty"], order["pcba"]["qty"]) == (5, 2)
+    assert {line["need"] for line in order["pcba"]["lines"] if line["lcsc"] == "C5271073"} == {2}
+    assert capsys.readouterr().out.startswith("MicrasMainBoard  ×5, 2 assembled  Economic\n")
+
+
+def test_quote_refuses_to_assemble_more_boards_than_it_makes(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit, match="--assemble 6 is more than the 5 boards of --qty"):
+        run(*MAINBOARD, "--qty", "5", "--assemble", "6")
+
+
 def test_quote_standard_counts_no_feeder_fee_against_extended_parts(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
