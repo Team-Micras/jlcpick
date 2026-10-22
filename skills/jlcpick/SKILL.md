@@ -96,7 +96,8 @@ Warnings (stderr, exit 0):
   replaces it with jlcpick's version.
 - `CODE: kept <file>, it differs from the EasyEDA conversion`: someone edited the footprint or
   STEP, or another part of the same package made it differently. The symbol is written anyway,
-  pointing at that file. `--force` rewrites the file.
+  pointing at that file. `--force` rewrites the file; when the warning ends `<symbols> also use
+  it`, `--force` refuses, see below.
 - `sym-lib-table maps <project> to <uri>, but add wrote <uri>` (or `fp-lib-table`): the table
   points the project's library at another file; fix the table, jlcpick leaves it as is.
 - `CODE: EasyEDA has no STEP model`: the draft has a footprint without 3D.
@@ -116,6 +117,9 @@ Errors (exit 1, nothing written):
 - `<library>: empty or cut off, its parentheses do not balance`: the library or a table is
   damaged; restore it from git.
 - `CODE: EasyEDA's footprint has no pad for pin N of its symbol`: EasyEDA's data is wrong.
+- `CODE: <file> has no pad for pin N of its symbol`: the footprint kept in the library, edited
+  or made by another part of the same package, does not fit this part; draw this part's
+  footprint by hand.
 - `<footprint> has no pad for pin N of <symbol>; fix packages.toml`: a bug in jlcpick's tables.
   Without `; fix packages.toml`, it is KiCad's own symbol for the MPN that lacks the pad.
 

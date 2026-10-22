@@ -375,12 +375,19 @@ def _status(
     if status != "kept" and force and stale and present is not None:
         status = "replaced"
     if not force:
+        fix = f"{', '.join(users)} also use it" if users else "--force rewrites it"
         notes += [
-            f"kept {file.as_posix()}, it differs from the EasyEDA conversion; --force rewrites it"
+            f"kept {file.as_posix()}, it differs from the EasyEDA conversion; {fix}"
             for file in stale
         ]
     if status == "kept":
         return status, notes, {}
+    for file in [f for f in stale if f.suffix == ".kicad_mod" and not force]:
+        if pins := library.missing_pads(entry.symbol, _text(file)):
+            sys.exit(
+                f"jlcpick: {part.lcsc}: {file.as_posix()} has no pad for pin {', '.join(pins)} "
+                "of its symbol; nothing written"
+            )
     return (
         status,
         notes,

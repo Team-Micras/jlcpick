@@ -647,6 +647,7 @@ def test_add_writes_a_new_symbol_and_keeps_the_footprint_the_user_changed(
     path.write_text(path.read_text().replace("(layer F.SilkS)", "(layer B.SilkS)"))
     saved = path.read_text()
     monkeypatch.setattr("jlcpick.sources.easyeda.package", lambda raw: USB_C_FOOTPRINT)
+    monkeypatch.setattr(library, "missing_pads", lambda symbol, footprint: [])
     capsys.readouterr()
 
     run("add", "C399938", "--json")
@@ -656,8 +657,26 @@ def test_add_writes_a_new_symbol_and_keeps_the_footprint_the_user_changed(
     assert path.read_text() == saved
     assert "USB Connectors SMD - 918-118A2021Y40006" in library.symbols(LIBRARY.read_text())
     assert (
-        f"kept {path.as_posix()}, it differs from the EasyEDA conversion; --force" in captured.err
+        f"kept {path.as_posix()}, it differs from the EasyEDA conversion; {USB_C} also use it\n"
+        in captured.err
     )
+
+
+def test_add_refuses_a_kept_footprint_without_a_pad_for_each_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run("add", "C2988369")
+    monkeypatch.setattr("jlcpick.sources.easyeda.package", lambda raw: USB_C_FOOTPRINT)
+    before = {p: p.read_bytes() for p in Path("lib").rglob("*") if p.is_file()}
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["add", "C399938"])
+
+    assert str(exit_info.value.code).startswith(
+        f"jlcpick: C399938: lib/board.pretty/{USB_C_FOOTPRINT}.kicad_mod has no pad for pin 5, "
+    )
+    assert str(exit_info.value.code).endswith(" of its symbol; nothing written")
+    assert {p: p.read_bytes() for p in Path("lib").rglob("*") if p.is_file()} == before
 
 
 def test_add_force_refuses_to_rewrite_a_footprint_another_symbol_uses(
