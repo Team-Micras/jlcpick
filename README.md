@@ -69,9 +69,10 @@ field, with what each saves. Parts it cannot judge are counted as "to check" or 
 `--assembly standard` prices Standard PCBA (packing, fixture and the per-board batch fee are not
 included), `--json` prints JSON, and `--fail-on-extended` exits 3 when an extended part pays the
 feeder fee. Every extended part that is not preferred pays the feeder fee in Economic, through-hole
-ones too, as JLC charged on a real order; Standard charges it for every part placed by machine. X-ray of leadless parts (BGA, QFN…) is shown apart, as
-"if JLC requires it", and left out of the total: JLC did not charge it on that order. A part with
-less stock than the units JLC charges gets a warning. Fees come from JLC's
+ones too, as JLC charged on a real order; Standard charges it for every part placed by machine.
+X-ray of leadless parts (BGA, QFN…) is shown apart, as "if JLC requires it", and left out of the
+total: JLC did not charge it on that order. A part with less stock than the units JLC charges gets
+a warning. Fees come from JLC's
 [PCB Assembly Price](https://jlcpcb.com/help/article/pcb-assembly-price) page of 2026-09-09, and
 every report prints that date.
 
