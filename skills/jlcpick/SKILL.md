@@ -219,7 +219,8 @@ jlcpick quote bom.csv --pcb board.kicad_pcb --qty 5 --json
 
 Prices the bare boards with JLC's own order calculator, live, and adds the assembly that `bom`
 prices (same BOM, `--assembly` and `--exclude`; no swap search, run `bom` for that). The board's
-size is the bounding box of its Edge.Cuts drawings (not those inside footprints), its layers are
+size is the bounding box of its Edge.Cuts drawings (not those inside footprints; a Bézier curve
+counts by its control points, so the box can come out larger), its layers are
 the copper layers of the file, and its thickness is the file's, rounded to JLC's nearest option
 (0.4, 0.6, 0.8, 1.0, 1.2, 1.6 or 2.0 mm). Everything else is JLC's default: HASL with lead, 1 oz
 copper, white silkscreen (black on a white mask). `--color` picks the solder mask: `green`
