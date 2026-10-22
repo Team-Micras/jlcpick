@@ -53,8 +53,9 @@ def fab(pcb: Path) -> list[list[str]]:
 def run(steps: list[list[str]], cwd: Path, keep_going: Callable[[], bool]) -> tuple[int, str]:
     """Run ``steps`` until one fails; return its exit code and output, or the last one's.
 
-    ``keep_going`` is asked about ten times a second; when it says no, the step is killed with
-    the processes it started.
+    ``keep_going`` is asked about ten times a second; when it says no, the step is stopped with
+    the processes it started: on Linux and macOS interrupted first, so jlcpick removes its
+    temporary folders, and killed two seconds later.
     """
     code, output = 0, ""
     for step in steps:
@@ -88,6 +89,9 @@ def _kill(process: subprocess.Popen[str]) -> None:
         subprocess.run(kill, capture_output=True, creationflags=NO_WINDOW)
     else:
         with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGINT)
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=2)
             os.killpg(process.pid, signal.SIGKILL)
 
 

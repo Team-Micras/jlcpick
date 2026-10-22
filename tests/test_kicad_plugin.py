@@ -116,6 +116,23 @@ def test_run_kills_the_step_and_what_it_started_when_cancelled(tmp_path: Path) -
     assert time.monotonic() - started < 10
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no SIGINT for a process group")
+def test_cancel_leaves_no_temporary_folder(tmp_path: Path) -> None:
+    step = (
+        "import tempfile, time\n"
+        "with tempfile.TemporaryDirectory(dir='.'):\n"
+        "    open('started', 'w').close()\n"
+        "    time.sleep(60)\n"
+    )
+
+    started = tmp_path / "started"
+
+    code, _ = run([[sys.executable, "-c", step]], tmp_path, lambda: not started.exists())
+
+    assert code != 0
+    assert [p.name for p in tmp_path.iterdir()] == ["started"]
+
+
 def test_pack_writes_the_layout_kicad_installs(tmp_path: Path) -> None:
     pack(tmp_path / "jlcpick.zip")
 
