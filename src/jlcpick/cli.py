@@ -25,6 +25,7 @@ KICAD_SHARES = (
     "C:/Program Files/KiCad/10.0/share/kicad",
     "~/.local/share/flatpak/runtime/org.kicad.KiCad.Library.*/*/stable/active/files",
     "/var/lib/flatpak/runtime/org.kicad.KiCad.Library.*/*/stable/active/files",
+    "/app/extensions/Library",
 )
 
 
