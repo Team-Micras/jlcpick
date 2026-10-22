@@ -216,7 +216,7 @@ unless the same MPN exists as basic or preferred.
 | Field | Meaning |
 |---|---|
 | `setup_usd`, `stencil_usd` | per order; per side in Standard |
-| `feeder_parts`, `feeder_each_usd`, `feeder_usd` | parts paying the feeder fee, through-hole ones included (JLC charged a through-hole switch on a real order): Economic, extended parts that are not preferred; Standard, every part |
+| `feeder_parts`, `feeder_each_usd`, `feeder_usd` | parts paying the feeder fee: Economic, extended parts that are not preferred, through-hole ones too (JLC charged a through-hole switch on a real order); Standard, every part placed by machine |
 | `smt_joints`, `smt_joints_usd` | machine-placed joints |
 | `manual_joints`, `manual_usd` | hand-soldered (THT) joints, plus the per-order labor fee |
 | `xray_units`, `xray_each_usd`, `xray_usd` | X-ray inspection if JLC requires it, not in `total_usd` (a real order with a QFN paid none): SMT units of leadless packages (BGA, QFN, DFN, LGA, WLCSP and variants), priced by the band their total reaches; the text shows it as `x-ray if JLC requires it` |
@@ -247,8 +247,9 @@ copper, white silkscreen (black on a white mask). `--color` picks the solder mas
 more. Shipping, taxes and customs are not included.
 
 JLC does not check the combination of layers, thickness and size, and quotes boards it cannot
-make. Warnings on stderr: the file's thickness more than 0.1 mm from the option priced, and an
-outline drawn inside a footprint (not measured). The text lists the five extended parts that
+make. Warnings on stderr: the file's thickness more than 0.1 mm from the option priced, an
+outline drawn inside a footprint (not measured), and a part with less stock than JLC charges
+(`pcba.warnings`). The text lists the five extended parts that
 weigh most (feeder fee plus the units charged beyond those placed) and leaves the rest to `bom`.
 
 The JSON:

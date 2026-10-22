@@ -51,7 +51,7 @@ class Quote:
 def quote(
     fabrication: Fabrication, price: BoardPrice, color: str, qty: int, pcba: bom.Report
 ) -> Quote:
-    """Add the ``qty`` boards JLC priced at ``price`` to the assembly ``pcba``."""
+    """Add the boards JLC priced at ``price`` for ``qty`` made to the assembly ``pcba``."""
     board = Board(
         width_mm=fabrication.width_mm,
         length_mm=fabrication.length_mm,
@@ -94,6 +94,9 @@ def text(quote: Quote) -> str:
     heaviest = [line for line in heaviest if _weight(line, feeder_each) > 0]
     preferred = sum(line.preferred for line in extended_lines)
     assembled = f", {pcba.qty} assembled" if pcba.qty != quote.qty else ""
+    per_board = (
+        f"   per board US$ {quote.total_usd / quote.qty:.2f}" if pcba.qty == quote.qty else ""
+    )
     left_out = "shipping, taxes and customs"
     if pcba.assembly == "standard":
         left_out += "; packing, fixture and the per-board batch fee of Standard"
@@ -106,8 +109,7 @@ def text(quote: Quote) -> str:
             f"{thickness} · {board.color} · HASL",
             f"  assembly   US$ {pcba.total_usd:.2f}   parts {pcba.parts_usd:.2f} + "
             f"fees {pcba.fees.total_usd:.2f}, fees as of {pcba.fees_as_of}",
-            f"  total      US$ {quote.total_usd:.2f}   per board US$ "
-            f"{quote.total_usd / quote.qty:.2f}",
+            f"  total      US$ {quote.total_usd:.2f}{per_board}",
             *bom.xray(pcba.fees),
             f"  extended   US$ {extended.usd:.2f}, {extended.share_pct:.1f} % of the total",
             f"             feeder {extended.feeder_usd:.2f} + units beyond those placed "

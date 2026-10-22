@@ -97,18 +97,21 @@ def unit_usd(part: Part, qty: int) -> float:
     return _rate(tuple((price.from_qty, price.usd) for price in part.prices), qty)
 
 
-def pays_feeder(part: Part, assembly: Assembly) -> bool:
-    """Whether ``part`` pays the feeder fee, through-hole parts too.
+def pays_feeder(part: Part, assembly: Assembly, tht: bool | None) -> bool:
+    """Whether ``part`` pays the feeder fee.
 
-    Economic charges it for extended parts that are not preferred; Standard, for every part.
+    Economic charges it for extended parts that are not preferred, through-hole ones too; Standard,
+    for every part placed by machine.
     """
-    return assembly == "standard" or (part.tier == "extended" and not part.preferred)
+    if assembly == "standard":
+        return not tht
+    return part.tier == "extended" and not part.preferred
 
 
 def fees(assembly: Assembly, placements: Sequence[Placement], sides: int) -> Fees:
     """Fees of assembling ``placements`` on ``sides`` sides.
 
-    Every part pays the feeder fee as `pays_feeder` says. Standard charges the shortfall when it
+    Parts pay the feeder fee as `pays_feeder` says. Standard charges the shortfall when it
     costs less than `STANDARD_MIN_GAP` over Economic. Every SMT unit whose package is leadless
     (`LEADLESS`) may need X-ray inspection, at the rate of the total count, outside the total.
     """
@@ -116,7 +119,7 @@ def fees(assembly: Assembly, placements: Sequence[Placement], sides: int) -> Fee
     smt = [p for p in placements if not p.tht]
     manual = [p for p in placements if p.tht]
     sides_billed = sides if schedule.per_side else 1
-    feeder_parts = tuple(p.part.lcsc for p in placements if pays_feeder(p.part, assembly))
+    feeder_parts = tuple(p.part.lcsc for p in placements if pays_feeder(p.part, assembly, p.tht))
     smt_joints = _joints(smt)
     manual_joints = _joints(manual)
     xray_units = sum(p.units for p in smt if LEADLESS.search(p.part.package))

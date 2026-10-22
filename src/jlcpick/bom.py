@@ -306,7 +306,7 @@ def _swap(suggestion: swaps.Suggestion, line: Line, assembly: pricing.Assembly) 
 
     def saves(new: Part) -> float:
         charged = pricing.charged(new, line.need)
-        fee = feeder if pricing.pays_feeder(new, assembly) else 0.0
+        fee = feeder if pricing.pays_feeder(new, assembly, line.tht) else 0.0
         return round(now - round(charged * pricing.unit_usd(new, charged), 2) - fee, 2)
 
     stocked = [c for c in suggestion.candidates if c.stock >= pricing.charged(c, line.need)]

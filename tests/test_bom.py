@@ -356,7 +356,7 @@ def test_bom_standard_on_a_board_with_a_bottom_part_pays_two_sides(
 
     run("bom", path, "--pcb", "board.kicad_pcb", "--qty", "1", "--assembly", "standard")
 
-    assert "  fees       setup 2 × 25.56 = 51.12 · stencil 2 × 8.21 = 16.42 · feeders 2" in (
+    assert "  fees       setup 2 × 25.56 = 51.12 · stencil 2 × 8.21 = 16.42 · feeders 1" in (
         capsys.readouterr().out
     )
     report = bom_json(capsys, "bom", path, "--pcb", "board.kicad_pcb", "--qty", "1")

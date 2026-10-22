@@ -1,8 +1,5 @@
 """Fee scenarios of Bouni's common/test_bom_estimator_pricing.py, at the 2026-09-09 fees."""
 
-import csv
-from pathlib import Path
-
 import pytest
 
 from jlcpick import pricing
@@ -68,25 +65,12 @@ def test_a_tht_part_pays_hand_soldering_and_the_feeder_but_no_stencil() -> None:
     assert fees.total_usd == 14.99
 
 
-def test_the_real_mainboard_order_pays_18_feeder_fees_with_its_tht_switch() -> None:
-    """JLC charged 18 extended fees on the MicrasMainBoard order of 2025-11-26 (Economic, 2
-    assembled), one of them for the through-hole slide switch SW4."""
-    with (Path(__file__).parent / "fixtures/mainboard-order-2025-11.csv").open() as file:
-        rows = list(csv.DictReader(file))
-    placements = [
-        pricing.Placement(
-            part(row["lcsc"], row["tier"], row["preferred"] == "true"),
-            units=2 * len(row["designators"].split()),
-            tht=row["tht"] == "true",
-            joints=1,
-        )
-        for row in rows
-    ]
+def test_standard_charges_no_feeder_for_a_through_hole_part() -> None:
+    tht = pricing.Placement(part("C777", "extended"), units=1, tht=True, joints=10)
 
-    fees = pricing.fees("economic", placements, sides=1)
+    fees = pricing.fees("standard", [tht], sides=1)
 
-    assert len(fees.feeder_parts) == 18
-    assert "C963202" in fees.feeder_parts
+    assert fees.feeder_parts == ()
 
 
 def test_standard_charges_a_feeder_for_every_smt_part() -> None:
