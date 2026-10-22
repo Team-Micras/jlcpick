@@ -1,0 +1,107 @@
+# KiCad's own symbol and footprint for each kind of part with a standard package. A part whose
+# JLC category is listed under a symbol gets that symbol and the footprint whose JLC package
+# names include the part's package. Every footprint here exists in KiCad 10.0.7 with a pad for
+# each pin of its symbol.
+
+["Device:R"]
+kind = "Resistor"
+value = "Resistance"
+categories = ["Chip Resistor - Surface Mount", "Current Sense Resistors / Shunt Resistors"]
+
+["Device:R".footprints]
+"Resistor_SMD:R_0402_1005Metric" = ["0402"]
+"Resistor_SMD:R_0603_1608Metric" = ["0603"]
+"Resistor_SMD:R_0805_2012Metric" = ["0805"]
+"Resistor_SMD:R_1206_3216Metric" = ["1206"]
+"Resistor_SMD:R_2512_6332Metric" = ["2512"]
+
+["Device:C"]
+kind = "Capacitor"
+value = "Capacitance"
+categories = ["Multilayer Ceramic Capacitors MLCC - SMD/SMT"]
+
+["Device:C".footprints]
+"Capacitor_SMD:C_0402_1005Metric" = ["0402"]
+"Capacitor_SMD:C_0603_1608Metric" = ["0603"]
+"Capacitor_SMD:C_0805_2012Metric" = ["0805"]
+"Capacitor_SMD:C_1206_3216Metric" = ["1206"]
+"Capacitor_SMD:C_1210_3225Metric" = ["1210"]
+
+["Device:C_Polarized"]
+kind = "Capacitor Polarised"
+value = "Capacitance"
+categories = ["Aluminum Electrolytic Capacitors - SMD"]
+
+["Device:C_Polarized".footprints]
+"Capacitor_SMD:CP_Elec_6.3x4.5" = ["SMD,D6.3xL4.5mm"]
+"Capacitor_SMD:CP_Elec_6.3x5.4" = ["SMD,D6.3xL5.4mm"]
+
+["Device:L"]
+kind = "Inductor"
+value = "Inductance"
+categories = ["Inductors (SMD)"]
+
+["Device:L".footprints]
+"Inductor_SMD:L_0402_1005Metric" = ["0402"]
+"Inductor_SMD:L_0603_1608Metric" = ["0603"]
+"Inductor_SMD:L_0805_2012Metric" = ["0805"]
+"Inductor_SMD:L_1206_3216Metric" = ["1206"]
+
+["Device:LED"]
+kind = "LED"
+value = "Illumination Color"
+categories = ["LED Indication - Discrete"]
+
+["Device:LED".footprints]
+"LED_SMD:LED_0402_1005Metric" = ["0402"]
+"LED_SMD:LED_0603_1608Metric" = ["0603"]
+"LED_SMD:LED_0805_2012Metric" = ["0805"]
+"LED_SMD:LED_1206_3216Metric" = ["1206"]
+
+["Device:D"]
+kind = "Diode"
+categories = [
+    "Switching Diodes",
+    "Diodes - General Purpose",
+    "Fast Recovery / High Efficiency Diodes",
+]
+
+["Device:D".footprints]
+"Diode_SMD:D_SOD-123" = ["SOD-123"]
+"Diode_SMD:D_SOD-323" = ["SOD-323"]
+"Diode_SMD:D_SMA" = ["SMA(DO-214AC)"]
+"Diode_SMD:D_SMB" = ["SMB"]
+"Diode_SMD:D_SMC" = ["SMC"]
+
+["Device:D_Schottky"]
+kind = "Diode Schottky"
+categories = ["Schottky Diodes"]
+
+["Device:D_Schottky".footprints]
+"Diode_SMD:D_SOD-123" = ["SOD-123"]
+"Diode_SMD:D_SOD-323" = ["SOD-323"]
+"Diode_SMD:D_SMA" = ["SMA(DO-214AC)"]
+"Diode_SMD:D_SMB" = ["SMB"]
+"Diode_SMD:D_SMC" = ["SMC"]
+
+["Device:D_Zener"]
+kind = "Diode Zener"
+categories = ["Zener Diodes"]
+
+["Device:D_Zener".footprints]
+"Diode_SMD:D_SOD-123" = ["SOD-123"]
+"Diode_SMD:D_SOD-323" = ["SOD-323"]
+"Diode_SMD:D_SMA" = ["SMA(DO-214AC)"]
+"Diode_SMD:D_SMB" = ["SMB"]
+"Diode_SMD:D_SMC" = ["SMC"]
+
+["Device:Polyfuse"]
+kind = "Fuse Resettable"
+value = "Hold Current"
+categories = ["Resettable Fuses"]
+
+["Device:Polyfuse".footprints]
+"Fuse:Fuse_0402_1005Metric" = ["0402"]
+"Fuse:Fuse_0603_1608Metric" = ["0603"]
+"Fuse:Fuse_0805_2012Metric" = ["0805"]
+"Fuse:Fuse_1206_3216Metric" = ["1206"]

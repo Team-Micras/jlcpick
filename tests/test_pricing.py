@@ -28,6 +28,7 @@ def part(
         loss_qty=loss_qty,
         params={},
         datasheet=None,
+        description="",
     )
 
 
