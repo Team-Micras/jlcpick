@@ -12,6 +12,14 @@ uvx --from . jlcpick get C25744 C8734 --json    # the same as JSON
 uvx --from . jlcpick get C25744 --out parts     # also parts/C25744.kicad_mod and .step
 ```
 
+Without cloning, until jlcpick is on PyPI:
+
+```sh
+uvx --from git+https://github.com/Team-Micras/jlcpick@v0.2.0 jlcpick get C25744
+uv tool install git+https://github.com/Team-Micras/jlcpick@v0.2.0      # jlcpick on PATH
+uv add --dev git+https://github.com/Team-Micras/jlcpick@v0.2.0         # in a project's own tools
+```
+
 Add parts to a KiCad project's library, from the project's folder:
 
 ```sh
