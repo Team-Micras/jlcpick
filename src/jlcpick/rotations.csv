@@ -1,11 +1,14 @@
-# Rotation and offset corrections of KiCad's stock footprints for JLCPCB, in KiKit's format.
-# From cpl_rotations_db.csv of JLCKicadTools, Copyright (C) 2019 Matthew Lai and contributors,
+# Rotation corrections of KiCad's stock footprints for JLCPCB, in KiKit's format.
+# From cpl_rotations_db.csv of JLCKicadTools by Matthew Lai and contributors,
 # https://github.com/matthewlai/JLCKicadTools at 500a9fff5998edb23f9bc36920a6f8f598f4ff67.
-# Licensed under the GNU General Public License, version 3 or (at your option) any later version;
-# see https://www.gnu.org/licenses/gpl-3.0.html. This file is distributed WITHOUT ANY WARRANTY.
+# Licensed under the GNU General Public License, version 3 (GPL-3.0, LICENSES/GPL-3.0.txt).
+# This file is distributed WITHOUT ANY WARRANTY.
 # Changes: columns reordered for KiKit; the leading "^" (twice in the WSON row) became "^(.*:)?"
 # because KiKit matches "Library:Footprint"; the rows keep their order and the first match wins,
 # as in JLCKicadTools before 2022 (it now takes the last, which changes SOP-4_ and VSSOP-8_3.0x3.0).
+# The USB_C_Receptacle_XKB_U262-16XN-4BVC11 and PinHeader_2x05_P1.27mm_Vertical rows are gone:
+# JLCKicadTools applies their offsets along the board's axes, KiKit along the footprint's, which
+# turn with the part, so the same offset moves the part somewhere else; those footprints are unchecked.
 # The last row is jlcpick's: two-pad chips need no correction, as order 10973279A showed.
 "Pattern","Part","X","Y","Rotation"
 "^(.*:)?R_Array_Convex_",".*","0","0","90"
@@ -52,7 +55,6 @@
 "^(.*:)?BatteryHolder_Keystone_1060_1x2032",".*","0","0","-180"
 "^(.*:)?SO-14",".*","0","0","-90"
 "^(.*:)?HTSSOP-",".*","0","0","270"
-"^(.*:)?USB_C_Receptacle_XKB_U262-16XN-4BVC11",".*","1.44","0","0"
 "^(.*:)?Relay_DPDT_Omron_G6K-2F-Y",".*","0","0","270"
 "^(.*:)?RP2040-QFN-56",".*","0","0","270"
 "^(.*:)?TO-277",".*","0","0","90"
@@ -64,7 +66,6 @@
 "^(.*:)?Quectel_L80-R",".*","0","0","270"
 "^(.*:)?SC-74-6",".*","0","0","180"
 "^(.*:)?SOT-143",".*","0","0","180"
-"^(.*:)?PinHeader_2x05_P1\.27mm_Vertical",".*","2.54","0.635","90"
 "^(.*:)?LED_WS2812B-2020_PLCC4_2.0x2.0mm",".*","0","0","90"
 "^(.*:)?WSON-8-1EP_6x5mm_P1.27mm",".*","0","0","-90"
 "^(.*:)?(R|C|L|Fuse)_\d{4}_\d{4}Metric",".*","0","0","0"
