@@ -1,0 +1,48 @@
+{
+    "$schema": "https://go.kicad.org/api/schemas/v1",
+    "identifier": "com.github.team-micras.jlcpick",
+    "name": "jlcpick",
+    "description": "Price the board's BOM and order at JLCPCB, add parts by LCSC code and write JLCPCB's files",
+    "runtime": {
+        "type": "python",
+        "min_version": "3.12"
+    },
+    "actions": [
+        {
+            "identifier": "bom",
+            "name": "Audit BOM cost",
+            "description": "Price the schematic's BOM for JLCPCB assembly, with safe basic swaps",
+            "show-button": true,
+            "scopes": ["pcb"],
+            "entrypoint": "bom_action.py",
+            "icons-light": ["bom.png"]
+        },
+        {
+            "identifier": "quote",
+            "name": "Quote JLCPCB order",
+            "description": "Price the bare boards and their assembly at JLCPCB",
+            "show-button": true,
+            "scopes": ["pcb"],
+            "entrypoint": "quote_action.py",
+            "icons-light": ["quote.png"]
+        },
+        {
+            "identifier": "add",
+            "name": "Add part by LCSC code",
+            "description": "Add parts to the project's symbol library by their LCSC codes",
+            "show-button": true,
+            "scopes": ["pcb"],
+            "entrypoint": "add_action.py",
+            "icons-light": ["add.png"]
+        },
+        {
+            "identifier": "fab",
+            "name": "Write JLCPCB files",
+            "description": "Write the Gerbers, BOM and CPL of a JLCPCB order to the project's jlcpcb folder",
+            "show-button": true,
+            "scopes": ["pcb"],
+            "entrypoint": "fab_action.py",
+            "icons-light": ["fab.png"]
+        }
+    ]
+}

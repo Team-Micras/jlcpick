@@ -25,6 +25,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "kicad-python==0.8.0",
     "pytest>=9.1.1",
     "ruff>=0.17.1",
     "ty>=0.0.90",
@@ -40,8 +41,15 @@ allowed-confusables = ["×"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["kicad-plugin", "kicad-plugin/plugins"]
 addopts = ["-m", "not live and not kicad", "--strict-markers"]
 markers = [
     "live: hits the real JLCPCB and EasyEDA endpoints",
     "kicad: runs KiKit, so needs jlcpick[fab] in a Python that imports KiCad's pcbnew",
 ]
+
+[tool.ty.environment]
+extra-paths = ["kicad-plugin", "kicad-plugin/plugins"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = ["wx", "wx.**"]

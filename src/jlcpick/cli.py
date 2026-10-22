@@ -230,12 +230,7 @@ def _lcsc_fields(pcb: Path) -> set[str]:
     schematic = pcb.with_suffix(".kicad_sch")
     if not schematic.exists():
         raise BomError(f"{schematic} not found; fab reads the LCSC codes from it")
-    fields = {
-        name
-        for sheet in pcb.parent.glob("*.kicad_sch")
-        for name in re.findall(r'\(property "([^"]+)"', _text(sheet))
-        if name.lower() in bom_input.COLUMNS["lcsc"]
-    }
+    fields = set(bom_input.lcsc_fields(_text(s) for s in pcb.parent.glob("*.kicad_sch")))
     if not fields:
         raise BomError(
             f"{schematic}: no symbol field holds LCSC codes; name it one of: "

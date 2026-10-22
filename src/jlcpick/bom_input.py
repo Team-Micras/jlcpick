@@ -14,6 +14,8 @@ the label. Columns are matched by name, ignoring case: the code may also be in `
 
 import csv
 import re
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
 COLUMNS = {
@@ -75,6 +77,17 @@ def read(text: str) -> list[BomLine]:
         return BomLine(designators, _code(cell(row, "lcsc"), number), dnp)
 
     return [line(number, row) for number, row in enumerate(rows[1:], start=2)]
+
+
+def lcsc_fields(sheets: Iterable[str]) -> Counter[str]:
+    """How many symbols of these schematics hold an LCSC code in each field named like a BOM's
+    LCSC column."""
+    return Counter(
+        name
+        for sheet in sheets
+        for name in re.findall(r'\(property "([^"]+)" "C\d+"', sheet)
+        if name.lower() in COLUMNS["lcsc"]
+    )
 
 
 def assembled(lines: list[BomLine], exclude: set[str]) -> list[BomLine]:

@@ -101,6 +101,33 @@ cached in `.jlcpick/cache/`; prices, stock and tier are always fetched live. Eas
 client for about 10 minutes after ~25 requests a minute, so jlcpick waits 3 s between requests to
 easyeda.com and 2 s to other sites.
 
+## KiCad plugin
+
+The same commands from KiCad 10's PCB editor, as four toolbar buttons that run jlcpick on the open
+board and show its report in a window:
+
+- **Audit BOM cost**: `bom` on the schematic's BOM, exported with KiCad's own `kicad-cli` and the
+  symbol field that holds most LCSC codes, with the board for joints and sides;
+- **Quote JLCPCB order**: `quote` on the same BOM and board;
+- **Add part by LCSC code**: `add` the codes typed, in the project's folder;
+- **Write JLCPCB files**: `fab` into the project's `jlcpcb` folder.
+
+To install it:
+
+1. In KiCad, Preferences → Plugins: check "Enable KiCad API".
+2. Either run `python kicad-plugin/pack.py` and install the `jlcpick-kicad.zip` it writes with
+   Plugin and Content Manager → Install from File…, or copy `kicad-plugin/plugins` into KiCad's
+   plugins folder as `jlcpick`: `~/.local/share/kicad/10.0/plugins` on Linux
+   (`~/.var/app/org.kicad.KiCad/data/kicad/10.0/plugins` with Flatpak),
+   `Documents\KiCad\10.0\plugins` on Windows, `~/Documents/KiCad/10.0/plugins` on macOS.
+3. Restart KiCad. It makes a Python environment for the plugin and installs jlcpick from GitHub
+   into it (with `git`, a minute or two); the buttons appear when that is done.
+
+The plugin shows its reports with wxPython, which KiCad's Python has on Windows, macOS and
+Flatpak; on Debian and Ubuntu install `python3-wxgtk4.0`. KiCad installs only wheels and some of
+KiKit's dependencies have none, so the first Write JLCPCB files installs KiKit into the plugin's
+environment itself; it then uses KiCad's own `pcbnew`.
+
 ## For agents
 
 [skills/jlcpick/SKILL.md](skills/jlcpick/SKILL.md) teaches an agent to use jlcpick; copy it
