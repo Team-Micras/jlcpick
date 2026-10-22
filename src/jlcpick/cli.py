@@ -25,9 +25,16 @@ KICAD_SHARES = (
     "C:/Program Files/KiCad/10.0/share/kicad",
     "~/.local/share/flatpak/runtime/org.kicad.KiCad.Library.*/*/stable/active/files",
     "/var/lib/flatpak/runtime/org.kicad.KiCad.Library.*/*/stable/active/files",
+    "/app/extensions/Library",
 )
-
-
+KICAD_CLIS = (
+    "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli",
+    "C:/Program Files/KiCad/10.0/bin/kicad-cli.exe",
+)
+KICAD_FLATPAKS = (
+    "~/.local/share/flatpak/app/org.kicad.KiCad",
+    "/var/lib/flatpak/app/org.kicad.KiCad",
+)
 KICAD_10 = {
     "symbols": ("Device.kicad_sym", '(generator_version "10.0")'),
     "footprints": ("Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod", "(version 2026"),
@@ -36,6 +43,12 @@ NO_KIKIT = (
     "jlcpick: fab needs KiKit and KiCad's pcbnew: install jlcpick[fab] in a Python that imports "
     "pcbnew, or run fab in the kicad/kicad:10.0.7 Docker image as the README shows"
 )
+NO_KICAD_CLI = (
+    "jlcpick: kicad-cli not found to export the schematic's BOM; install KiCad 10, put kicad-cli "
+    "on PATH or pass --kicad-cli"
+)
+BOM_SOURCE = "CSV from kicad-cli sch export bom, LCSC codes, or the root .kicad_sch"
+KICAD_CLI_HELP = "kicad-cli to export a .kicad_sch with (PATH, then KiCad's usual places)"
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -48,7 +61,7 @@ def main(argv: list[str] | None = None) -> None:
     get.add_argument("--json", action="store_true", help="print JSON")
     get.add_argument("--out", type=Path, metavar="DIR", help="also save footprint and STEP")
     cost = commands.add_parser("bom", help="price a KiCad BOM for JLCPCB assembly")
-    cost.add_argument("bom", type=Path, help="CSV from kicad-cli sch export bom, or LCSC codes")
+    cost.add_argument("bom", type=Path, help=BOM_SOURCE)
     cost.add_argument("--pcb", type=Path, help="the .kicad_pcb, for joints, sides and THT")
     cost.add_argument("--qty", type=_positive, default=5, help="boards to assemble (5)")
     cost.add_argument("--assembly", choices=["economic", "standard"], default="economic")
@@ -56,19 +69,21 @@ def main(argv: list[str] | None = None) -> None:
     cost.add_argument("--json", action="store_true", help="print JSON")
     cost.add_argument("--verbose", action="store_true", help="list every part a swap skipped")
     cost.add_argument("--no-swaps", action="store_true", help="skip the search for safe swaps")
+    cost.add_argument("--kicad-cli", type=Path, metavar="PATH", help=KICAD_CLI_HELP)
     cost.add_argument(
         "--fail-on-extended",
         action="store_true",
         help="exit 3 when an extended part pays the feeder fee",
     )
     order = commands.add_parser("quote", help="price a whole JLCPCB order: boards and assembly")
-    order.add_argument("bom", type=Path, help="CSV from kicad-cli sch export bom, or LCSC codes")
+    order.add_argument("bom", type=Path, help=BOM_SOURCE)
     order.add_argument("--pcb", type=Path, required=True, help="the .kicad_pcb")
     order.add_argument("--qty", type=_positive, default=5, help="boards to make and assemble (5)")
     order.add_argument("--assembly", choices=["economic", "standard"], default="economic")
     order.add_argument("--exclude", type=_designators, action="extend", default=[], metavar="U1,U3")
     order.add_argument("--color", choices=jlc.COLORS, default="green", help="solder mask (green)")
     order.add_argument("--json", action="store_true", help="print JSON")
+    order.add_argument("--kicad-cli", type=Path, metavar="PATH", help=KICAD_CLI_HELP)
     add = commands.add_parser("add", help="add parts to the project's symbol library")
     add.add_argument("codes", nargs="+", type=_lcsc, metavar="LCSC", help="e.g. C25744")
     add.add_argument(
@@ -157,7 +172,9 @@ def _quote(args: argparse.Namespace) -> None:
 
 
 def _assembly(args: argparse.Namespace, with_swaps: bool) -> bom.Report:
-    lines = bom_input.assembled(bom_input.read(_text(args.bom)), set(args.exclude))
+    lines = bom_input.assembled(
+        bom_input.read(_bom_csv(args.bom, args.kicad_cli)), set(args.exclude)
+    )
     footprints = None if args.pcb is None else board.footprints(_text(args.pcb))
     codes = bom.codes(lines)
     if len(codes) > 1:
@@ -179,7 +196,7 @@ def _fab(pcb: Path, exclude: set[str], out: Path) -> None:
         raise BomError(f"--exclude: not on the board: {', '.join(sorted(unknown))}")
     stock = {p.stem for p in _kicad_dir("KICAD10_FOOTPRINT_DIR", "footprints").glob("*.pretty")}
     table, unchecked = fab.corrections((f.name for f in placed.values()), stock)
-    fields = _lcsc_fields(pcb)
+    fields = _lcsc_fields(pcb.with_suffix(".kicad_sch"))
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out) as scratch:
         work = Path(scratch)
@@ -225,16 +242,43 @@ def _fab(pcb: Path, exclude: set[str], out: Path) -> None:
         sys.exit(3)
 
 
-def _lcsc_fields(pcb: Path) -> set[str]:
-    schematic = pcb.with_suffix(".kicad_sch")
+def _bom_csv(path: Path, kicad_cli: Path | None) -> str:
+    if path.suffix != ".kicad_sch":
+        return _text(path)
+    fields = _lcsc_fields(path)
+    schematic = path.resolve()
+    with tempfile.TemporaryDirectory(dir=schematic.parent) as scratch:
+        csv = Path(scratch) / "bom.csv"
+        export = [
+            *_kicad_cli(kicad_cli), "sch", "export", "bom", str(schematic), "-o", str(csv),
+            "--ref-range-delimiter", "",
+            "--fields", ",".join(["Reference", "Value", "Footprint", "QUANTITY", "DNP", *fields]),
+            "--labels", ",".join(["Refs", "Value", "Footprint", "Qty", "DNP", *fields]),
+            "--group-by", ",".join(["Value", "Footprint", *fields, "DNP"]),
+        ]  # fmt: skip
+        done = subprocess.run(export, capture_output=True, text=True)
+        if done.returncode != 0:
+            sys.exit(f"jlcpick: kicad-cli failed:\n{done.stdout}{done.stderr}")
+        return _text(csv)
+
+
+def _kicad_cli(given: Path | None) -> list[str]:
+    if given is not None:
+        return [str(given)]
+    found = shutil.which("kicad-cli") or next((p for p in KICAD_CLIS if Path(p).exists()), None)
+    if found:
+        return [found]
+    flatpak = shutil.which("flatpak")
+    if flatpak and any(Path(app).expanduser().exists() for app in KICAD_FLATPAKS):
+        return [flatpak, "run", "--command=kicad-cli", "org.kicad.KiCad"]
+    sys.exit(NO_KICAD_CLI)
+
+
+def _lcsc_fields(schematic: Path) -> list[str]:
     if not schematic.exists():
-        raise BomError(f"{schematic} not found; fab reads the LCSC codes from it")
-    fields = {
-        name
-        for sheet in pcb.parent.glob("*.kicad_sch")
-        for name in re.findall(r'\(property "([^"]+)"', _text(sheet))
-        if name.lower() in bom_input.COLUMNS["lcsc"]
-    }
+        raise BomError(f"{schematic} not found; the LCSC codes are read from it")
+    found = bom_input.lcsc_fields(_text(s) for s in schematic.parent.glob("*.kicad_sch"))
+    fields = sorted(found, key=lambda name: (bom_input.COLUMNS["lcsc"].index(name.lower()), name))
     if not fields:
         raise BomError(
             f"{schematic}: no symbol field holds LCSC codes; name it one of: "
@@ -243,14 +287,14 @@ def _lcsc_fields(pcb: Path) -> set[str]:
     return fields
 
 
-def _kikit(pcb: Path, fields: set[str], corrections: str, out: Path) -> None:
+def _kikit(pcb: Path, fields: list[str], corrections: str, out: Path) -> None:
     here = shutil.which("kikit", path=str(Path(sys.executable).parent))
     kikit = here or shutil.which("kikit")
     if kikit is None:
         sys.exit(NO_KIKIT)
     schematic = pcb.with_suffix(".kicad_sch")
     command = [kikit, "fab", "jlcpcb", "--no-drc", "--assembly", "--schematic", str(schematic)]
-    command += ["--field", ",".join(sorted(fields))]
+    command += ["--field", ",".join(fields)]
     if corrections:
         (out / "corrections.csv").write_text(corrections, encoding="utf-8")
         command += ["--correctionpatterns", str(out / "corrections.csv")]
@@ -527,7 +571,7 @@ def _status(
         ]
     if status == "kept":
         return status, notes, {}
-    for file in [f for f in stale if f.suffix == ".kicad_mod" and not force]:
+    for file in [f for f in stale if f.suffix == ".kicad_mod" and present is None]:
         if pins := library.missing_pads(entry.symbol, _text(file)):
             sys.exit(
                 f"jlcpick: {part.lcsc}: {file.as_posix()} has no pad for pin {', '.join(pins)} "

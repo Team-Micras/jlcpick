@@ -12,6 +12,7 @@ import pytest
 import xlrd
 from conftest import run
 
+from jlcpick import bom_input
 from jlcpick.cli import main
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -352,6 +353,35 @@ def test_fab_with_kikit_but_no_pcbnew_says_how_to_get_it() -> None:
 
     assert "run fab in the kicad/kicad:10.0.7 Docker image" in str(exit_info.value.code)
     assert not Path("jlcpcb/bom.csv").exists()
+
+
+def test_fab_reads_codes_typed_in_lowercase_and_not_the_library_symbols_fields(kikit: Path) -> None:
+    record("Designator,LCSC\nR1,C25744\n", "Designator,Rotation\nR1,0\n")
+    path = board(("R1", "MicrasLib:R0402"))
+    Path("board.kicad_sch").write_text(
+        '(kicad_sch (lib_symbols (symbol "Device:R" (property "LCSC" "C25744")))\n'
+        '  (symbol (lib_id "Device:R") (property "LCSC Part #" " c25744 ")))\n'
+    )
+
+    run("fab", path)
+
+    args = json.loads(kikit.read_text())["args"]
+    assert args[args.index("--field") + 1] == "LCSC Part #"
+
+
+def test_fab_and_bom_take_the_same_code_from_a_symbol_with_two_lcsc_fields(kikit: Path) -> None:
+    record("Designator,LCSC\nR1,C25744\n", "Designator,Rotation\nR1,0\n")
+    path = board(("R1", "MicrasLib:R0402"))
+    Path("board.kicad_sch").write_text(
+        '(kicad_sch (symbol (property "JLCPCB Part #" "C307331") (property "LCSC" "C25744")))\n'
+    )
+
+    run("fab", path)
+
+    args = json.loads(kikit.read_text())["args"]
+    assert args[args.index("--field") + 1] == "LCSC,JLCPCB Part #"
+    [line] = bom_input.read("Refs,JLCPCB Part #,LCSC\nR1,C307331,C25744\n")
+    assert line.lcsc == "C25744"
 
 
 @pytest.mark.usefixtures("kikit")

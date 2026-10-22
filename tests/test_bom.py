@@ -1,4 +1,5 @@
 import json
+import sys
 from collections.abc import Callable
 from dataclasses import fields, replace
 from pathlib import Path
@@ -6,7 +7,7 @@ from typing import Any
 
 import pytest
 import xlrd
-from conftest import run
+from conftest import mainboard_schematic, run
 
 from jlcpick import bom
 from jlcpick.bom_input import BomLine
@@ -47,6 +48,78 @@ def test_bom_prints_the_mainboard_like_the_documented_example(
 
     assert command.startswith("$ jlcpick bom MicrasMainBoard-kicad-bom.csv --pcb")
     assert capsys.readouterr().out == expected[0]
+
+
+def test_bom_exports_a_schematic_with_every_field_that_holds_codes(
+    capsys: pytest.CaptureFixture[str], kicad_cli: Path
+) -> None:
+    _, expected = (ROOT / "docs/example-bom.txt").read_text().split("\n", 1)
+
+    run("bom", mainboard_schematic(), *PCB, "--qty", "5", "--kicad-cli", str(kicad_cli))
+
+    assert capsys.readouterr().out == expected
+    args = json.loads((kicad_cli.parent / "args.json").read_text())
+    assert args[:5] == [
+        "sch",
+        "export",
+        "bom",
+        str(Path("MicrasMainBoard.kicad_sch").resolve()),
+        "-o",
+    ]
+    assert args[6:] == [
+        "--ref-range-delimiter", "",
+        "--fields", "Reference,Value,Footprint,QUANTITY,DNP,LCSC Part #,SUPPLIER PART",
+        "--labels", "Refs,Value,Footprint,Qty,DNP,LCSC Part #,SUPPLIER PART",
+        "--group-by", "Value,Footprint,LCSC Part #,SUPPLIER PART,DNP",
+    ]  # fmt: skip
+    assert sorted(p.name for p in Path().iterdir()) == [
+        "MicrasMainBoard.kicad_sch",
+        "kicad",
+        "power.kicad_sch",
+    ]
+
+
+def test_bom_finds_kicad_cli_on_path(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], kicad_cli: Path
+) -> None:
+    monkeypatch.setenv("PATH", str(kicad_cli.parent))
+
+    run("bom", mainboard_schematic(), "--no-swaps")
+
+    assert capsys.readouterr().out.startswith("MicrasMainBoard  ×5  Economic")
+    assert (kicad_cli.parent / "args.json").exists()
+
+
+def test_bom_without_kicad_cli_says_how_to_point_at_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    assert exit_code("bom", mainboard_schematic()) == (
+        "jlcpick: kicad-cli not found to export the schematic's BOM; install KiCad 10, put "
+        "kicad-cli on PATH or pass --kicad-cli"
+    )
+
+
+def test_bom_shows_why_kicad_cli_failed(tmp_path: Path) -> None:
+    failing = tmp_path / "kicad-cli"
+    failing.write_text(
+        f"#!{sys.executable}\nprint('Failed to load schematic')\nraise SystemExit(1)\n"
+    )
+    failing.chmod(0o755)
+
+    code = exit_code("bom", mainboard_schematic(), "--kicad-cli", str(failing))
+
+    assert code == "jlcpick: kicad-cli failed:\nFailed to load schematic\n"
+
+
+def test_bom_on_a_schematic_without_lcsc_codes_names_the_fields_it_reads() -> None:
+    Path("board.kicad_sch").write_text('(kicad_sch (lib_symbols (property "LCSC" "C1")))\n')
+
+    assert str(exit_code("bom", "board.kicad_sch")).startswith(
+        "jlcpick: board.kicad_sch: no symbol field holds LCSC codes"
+    )
 
 
 def test_bom_without_a_board_assumes_one_side_and_warns(

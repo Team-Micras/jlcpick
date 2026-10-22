@@ -125,7 +125,21 @@ Errors (exit 1, nothing written):
 
 ## Price a BOM
 
-Export the BOM from the schematic, then price it with the board:
+Price the root schematic with the board:
+
+```sh
+jlcpick bom board.kicad_sch --pcb board.kicad_pcb --qty 5 --json
+```
+
+Given a `.kicad_sch`, `bom` exports its BOM with `kicad-cli`, reading the code from every symbol
+field named like a BOM's LCSC column (`LCSC`, `LCSC Part #`, `SUPPLIER PART`…) that holds one in
+any sheet of the folder, the fields `fab` reads; a symbol with codes in two of them gets, in both,
+the one in the field listed first. Codes in lowercase or with spaces count. It finds
+`kicad-cli` on PATH, then in KiCad 10's macOS and Windows install folders, then in KiCad's Flatpak
+(which sees only files under the home folder); `--kicad-cli PATH` names it. Not found, or failing,
+it exits 1 with KiCad's output.
+
+A CSV exported by hand works too:
 
 ```sh
 kicad-cli sch export bom board.kicad_sch -o bom.csv --ref-range-delimiter '' \
@@ -137,11 +151,13 @@ jlcpick bom bom.csv --pcb board.kicad_pcb --qty 5 --json
 `LCSC` in `--fields` is the symbol field with the code; if the project names it differently
 (`SUPPLIER PART`, `LCSC Part #`…), put that name in `--fields` and keep the `LCSC` label. Columns
 named `LCSC Part`, `JLCPCB Part #` or `Supplier Part`, and `Designator`/`Comment` (Altium) are also
-read. A one-column CSV of codes works too, one use per row.
+read; a row takes the code from the first of them that has one. A one-column CSV of codes works
+too, one use per row.
 
 | Flag | Meaning |
 |---|---|
 | `--pcb` | the `.kicad_pcb`: joints, sides and through-hole parts. Without it joints are `null` and one side is assumed (a warning says so) |
+| `--kicad-cli PATH` | the `kicad-cli` that exports a `.kicad_sch` |
 | `--qty` | boards to assemble, default 5 |
 | `--assembly` | `economic` (default) or `standard` |
 | `--exclude U1,U3` | leave these designators out of the order, as if DNP. DNP rows are always left out |
@@ -214,11 +230,12 @@ minimum order): a basic part with the same specs removes both.
 ## Quote a whole order
 
 ```sh
-jlcpick quote bom.csv --pcb board.kicad_pcb --qty 5 --json
+jlcpick quote board.kicad_sch --pcb board.kicad_pcb --qty 5 --json
 ```
 
 Prices the bare boards with JLC's own order calculator, live, and adds the assembly that `bom`
-prices (same BOM, `--assembly` and `--exclude`; no swap search, run `bom` for that). The board's
+prices (same schematic or CSV, `--assembly`, `--exclude` and `--kicad-cli`; no swap search, run
+`bom` for that). The board's
 size is the bounding box of its Edge.Cuts drawings (not those inside footprints; a Bézier curve
 counts by its control points, so the box can come out larger), its layers are
 the copper layers of the file, and its thickness is the file's, rounded to JLC's nearest option
@@ -295,7 +312,7 @@ Problems (stderr, exit 3, after the files are written):
 | Code | Meaning |
 |---|---|
 | 0 | ok, possibly with warnings on stderr |
-| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `quote`, also a board without an Edge.Cuts outline or thickness, or with an arc in KiCad 5's format, or JLC's calculator failing; for `fab`, no schematic next to the board, no LCSC field in it, an `--exclude` designator not on the board, KiKit missing or failing, or KiCad 10's footprints not found (set `KICAD10_FOOTPRINT_DIR`); for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
+| 1 | error: unknown code, network down, site blocked us, unexpected answer; for `bom`, a CSV without an LCSC or designator column, a `.kicad_sch` without LCSC codes, `kicad-cli` not found or failing, a bad code, an `--exclude` designator not in the BOM, a file that is not a KiCad board; for `quote`, also a board without an Edge.Cuts outline or thickness, or with an arc in KiCad 5's format, or JLC's calculator failing; for `fab`, no schematic next to the board, no LCSC field in it, an `--exclude` designator not on the board, KiKit missing or failing, or KiCad 10's footprints not found (set `KICAD10_FOOTPRINT_DIR`); for `add`, a part neither KiCad nor EasyEDA has, no `.kicad_pro` in the folder, KiCad 10 not found, or the cases listed under "Add parts" |
 | 2 | invalid usage, e.g. a code that is not `C` + digits |
 | 3 | `bom --fail-on-extended` found an extended part paying the feeder fee; the report is printed first. `fab`: a stock footprint without a checked rotation, or a stock through-hole one; the files are written first |
 

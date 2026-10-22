@@ -17,6 +17,9 @@ runs the real KiKit; it needs `jlcpick[fab]` in a Python that imports `pcbnew`, 
 
 - Only `src/jlcpick/sources/` touches the network. Everything else is pure; `cli.py` coordinates;
   only `cli.py` and the EasyEDA cache in `sources/` write files.
+- `kicad-plugin/` is KiCad 10's plugin: it runs the CLI on the open board and shows its output,
+  with no logic of its own beyond building the commands; `tests/test_kicad_plugin.py` tests that
+  without KiCad.
 - Tests go through the CLI with recorded fixtures in `tests/fixtures/`. To record new ones, fetch
   part by part with a pause: EasyEDA blocks for ~10 minutes after ~25 requests a minute.
 - No comments inside function bodies; docstrings on public functions.

@@ -613,6 +613,29 @@ def test_add_ignores_a_kicad_of_another_version(
     )
 
 
+def test_add_ignores_a_kicad_footprint_library_of_another_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    old = tmp_path / "kicad9"
+    footprint = old / "footprints/Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod"
+    footprint.parent.mkdir(parents=True)
+    footprint.write_text(
+        (KICAD / "footprints/Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod")
+        .read_text()
+        .replace("(version 20260206)", "(version 20241229)")
+    )
+    monkeypatch.delenv("KICAD10_FOOTPRINT_DIR")
+    monkeypatch.setattr("jlcpick.cli.KICAD_SHARES", (str(old),))
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["add", "C25744"])
+
+    assert exit_info.value.code == (
+        f"jlcpick: KiCad 10's footprints not found (the KiCad found, {old}, is another version); "
+        "install KiCad 10 or set KICAD10_FOOTPRINT_DIR"
+    )
+
+
 def test_add_copies_the_root_of_a_symbol_that_extends_one_that_extends_another() -> None:
     run("add", "C9999998")
 
@@ -639,7 +662,7 @@ def test_add_checks_the_pads_against_the_root_of_a_symbol_with_two_parents(
     assert "no pad for pin 2" in str(exit_info.value.code)
 
 
-def test_add_writes_a_new_symbol_and_keeps_the_footprint_the_user_changed(
+def test_add_notes_that_a_part_with_a_new_symbol_also_uses_the_footprint_the_user_changed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     run("add", "C2988369")
@@ -660,6 +683,43 @@ def test_add_writes_a_new_symbol_and_keeps_the_footprint_the_user_changed(
         f"kept {path.as_posix()}, it differs from the EasyEDA conversion; {USB_C} also use it\n"
         in captured.err
     )
+
+
+def test_add_leaves_a_present_part_alone_when_the_user_edited_its_footprint(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run("add", "C2988369")
+    path = Path(f"lib/board.pretty/{USB_C_FOOTPRINT}.kicad_mod")
+    path.write_text(path.read_text().replace("(layer F.SilkS)", "(layer B.SilkS)"))
+    saved = path.read_text()
+    capsys.readouterr()
+
+    run("add", "C2988369", "--json")
+
+    captured = capsys.readouterr()
+    assert [(o["lcsc"], o["status"]) for o in json.loads(captured.out)] == [
+        ("C2988369", "unchanged")
+    ]
+    assert path.read_text() == saved
+    assert (
+        f"kept {path.as_posix()}, it differs from the EasyEDA conversion; --force rewrites it\n"
+        in captured.err
+    )
+
+
+def test_add_writes_a_new_part_when_a_present_one_lost_a_pad_in_its_footprint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run("add", "C2988369")
+    path = Path(f"lib/board.pretty/{USB_C_FOOTPRINT}.kicad_mod")
+    text = path.read_text()
+    first = re.search(r'\(pad "?([^"\s]+)"?', text)
+    assert first
+    path.write_text(re.sub(rf'\(pad "?{first[1]}"?', '(pad "99"', text))
+
+    run("add", "C2988369", "C25744")
+
+    assert R_10K in library.symbols(LIBRARY.read_text())
 
 
 def test_add_refuses_a_kept_footprint_without_a_pad_for_each_pin(

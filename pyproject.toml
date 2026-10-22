@@ -1,6 +1,6 @@
 [project]
 name = "jlcpick"
-version = "0.1.0"
+version = "0.2.0"
 description = "Look up JLCPCB parts and audit KiCad boards for JLCPCB assembly"
 readme = "README.md"
 authors = [
@@ -40,8 +40,15 @@ allowed-confusables = ["×"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["kicad-plugin", "kicad-plugin/plugins"]
 addopts = ["-m", "not live and not kicad", "--strict-markers"]
 markers = [
     "live: hits the real JLCPCB and EasyEDA endpoints",
     "kicad: runs KiKit, so needs jlcpick[fab] in a Python that imports KiCad's pcbnew",
 ]
+
+[tool.ty.environment]
+extra-paths = ["kicad-plugin", "kicad-plugin/plugins"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = ["wx", "wx.**", "kipy", "kipy.**"]

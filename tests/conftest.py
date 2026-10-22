@@ -1,5 +1,6 @@
 import io
 import json
+import sys
 from collections.abc import Callable
 from email.message import Message
 from pathlib import Path
@@ -14,6 +15,15 @@ PARTS = Path(__file__).parent / "fixtures" / "parts"
 SEARCHES = Path(__file__).parent / "fixtures" / "search"
 STEPS = Path(__file__).parent / "fixtures" / "step"
 BOARD_PRICE = Path(__file__).parent / "fixtures" / "quote" / "mainboard_response.json"
+KICAD_BOM = Path(__file__).parent / "fixtures" / "MicrasMainBoard-kicad-bom.csv"
+FAKE_KICAD_CLI = """#!{python}
+import json, shutil, sys
+from pathlib import Path
+
+args = sys.argv[1:]
+Path(__file__).with_name("args.json").write_text(json.dumps(args))
+shutil.copy({bom!r}, args[args.index("-o") + 1])
+"""
 
 
 def run(*argv: str) -> None:
@@ -62,3 +72,26 @@ def network(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[..., No
 
     serve()
     return serve
+
+
+@pytest.fixture
+def kicad_cli(tmp_path: Path) -> Path:
+    """A fake ``kicad-cli`` that exports the MainBoard's recorded BOM and writes the arguments it
+    got to ``args.json`` beside it."""
+    folder = tmp_path / "kicad"
+    folder.mkdir()
+    fake = folder / "kicad-cli"
+    fake.write_text(FAKE_KICAD_CLI.format(python=sys.executable, bom=str(KICAD_BOM)))
+    fake.chmod(0o755)
+    return fake
+
+
+def mainboard_schematic() -> str:
+    """Write the MainBoard's root sheet and a subsheet: the codes are in two fields, one typed in
+    lowercase with spaces, and a library symbol holds a third that no placed symbol uses."""
+    Path("MicrasMainBoard.kicad_sch").write_text(
+        '(kicad_sch (lib_symbols (symbol "Device:R" (property "LCSC" "C25744")))\n'
+        '  (symbol (lib_id "Device:R") (property "SUPPLIER PART" "C307331")))\n'
+    )
+    Path("power.kicad_sch").write_text('(kicad_sch (symbol (property "LCSC Part #" " c8734 ")))\n')
+    return "MicrasMainBoard.kicad_sch"

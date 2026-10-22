@@ -1,0 +1,26 @@
+{
+    "$schema": "https://go.kicad.org/pcm/schemas/v2",
+    "name": "jlcpick",
+    "description": "Price the BOM and order at JLCPCB, add parts by LCSC code, write JLCPCB's files",
+    "description_full": "Runs jlcpick on the board open in the PCB editor: audits the schematic's BOM for JLCPCB assembly with safe basic swaps, quotes the bare boards plus assembly, adds parts to the project's library by LCSC code, and writes the Gerbers, BOM and CPL of a JLCPCB order.",
+    "identifier": "com.github.team-micras.jlcpick",
+    "type": "plugin",
+    "author": {
+        "name": "Team Micras",
+        "contact": {
+            "github": "https://github.com/Team-Micras"
+        }
+    },
+    "license": "AGPL-3.0",
+    "resources": {
+        "homepage": "https://github.com/Team-Micras/jlcpick"
+    },
+    "versions": [
+        {
+            "version": "0.2.0",
+            "status": "development",
+            "kicad_version": "10.0",
+            "runtime": "ipc"
+        }
+    ]
+}

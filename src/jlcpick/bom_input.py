@@ -6,14 +6,16 @@ The BOM is the CSV of::
         --fields 'Reference,Value,Footprint,QUANTITY,DNP,LCSC' \\
         --labels 'Refs,Value,Footprint,Qty,DNP,LCSC' --group-by 'Value,Footprint,LCSC,DNP'
 
-where ``LCSC`` is the symbol field holding the code; put your field's name in ``--fields`` and keep
-the label. Columns are matched by name, ignoring case: the code may also be in ``LCSC Part``,
-``LCSC Part #``, ``JLCPCB Part #`` or ``Supplier Part``, the designators in ``Reference`` or
+where ``LCSC`` is the symbol field holding the code. Columns are matched by name, ignoring case:
+the code may also be in ``LCSC Part``, ``LCSC Part #``, ``JLCPCB Part #`` or ``Supplier Part``, and
+a row takes the first of them that holds one; the designators are in ``Reference`` or
 ``Designator``. A one-column CSV of codes is a list, one use per row.
 """
 
 import csv
 import re
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
 COLUMNS = {
@@ -53,8 +55,10 @@ def read(text: str) -> list[BomLine]:
     columns = {
         key: next((header.index(name) for name in names if name in header), None)
         for key, names in COLUMNS.items()
+        if key != "lcsc"
     }
-    if columns["lcsc"] is None:
+    codes = [header.index(name) for name in COLUMNS["lcsc"] if name in header]
+    if not codes:
         raise BomError(f"the BOM has no LCSC column; name one of: {', '.join(COLUMNS['lcsc'])}")
     if columns["designators"] is None:
         raise BomError("the BOM has no designator column, such as Refs or Designator")
@@ -72,9 +76,21 @@ def read(text: str) -> list[BomLine]:
                 " count as one, so export with --ref-range-delimiter ''"
             )
         dnp = cell(row, "dnp").lower() not in ("", "no", "0", "false")
-        return BomLine(designators, _code(cell(row, "lcsc"), number), dnp)
+        code = next((row[i].strip() for i in codes if i < len(row) and row[i].strip()), "")
+        return BomLine(designators, _code(code, number), dnp)
 
     return [line(number, row) for number, row in enumerate(rows[1:], start=2)]
+
+
+def lcsc_fields(sheets: Iterable[str]) -> Counter[str]:
+    """How many placed symbols of these schematics hold an LCSC code in each field named like a
+    BOM's LCSC column; the library copies in ``lib_symbols`` are not counted."""
+    return Counter(
+        name
+        for sheet in sheets
+        for name in re.findall(r'\(property "([^"]+)" "\s*[cC]\d+\s*"', _placed(sheet))
+        if name.lower() in COLUMNS["lcsc"]
+    )
 
 
 def assembled(lines: list[BomLine], exclude: set[str]) -> list[BomLine]:
@@ -88,6 +104,18 @@ def assembled(lines: list[BomLine], exclude: set[str]) -> list[BomLine]:
         if not line.dnp and (designators or not line.designators):
             kept.append(replace(line, designators=designators))
     return kept
+
+
+def _placed(sheet: str) -> str:
+    start = sheet.find("(lib_symbols")
+    if start < 0:
+        return sheet
+    depth = 0
+    for lexeme in re.finditer(r'"(?:\\.|[^"\\])*"|[()]', sheet[start:]):
+        depth += {"(": 1, ")": -1}.get(lexeme.group(), 0)
+        if depth == 0:
+            return sheet[:start] + sheet[start + lexeme.end() :]
+    return sheet[:start]
 
 
 def _code_list(cells: list[str]) -> list[BomLine]:

@@ -8,4 +8,4 @@ def test_version_prints_package_version(capsys: pytest.CaptureFixture[str]) -> N
         main(["--version"])
 
     assert exit_info.value.code == 0
-    assert capsys.readouterr().out == "jlcpick 0.1.0\n"
+    assert capsys.readouterr().out == "jlcpick 0.2.0\n"

@@ -12,6 +12,14 @@ uvx --from . jlcpick get C25744 C8734 --json    # the same as JSON
 uvx --from . jlcpick get C25744 --out parts     # also parts/C25744.kicad_mod and .step
 ```
 
+Without cloning, until jlcpick is on PyPI:
+
+```sh
+uvx --from git+https://github.com/Team-Micras/jlcpick@v0.2.0 jlcpick get C25744
+uv tool install git+https://github.com/Team-Micras/jlcpick@v0.2.0      # jlcpick on PATH
+uv add --dev git+https://github.com/Team-Micras/jlcpick@v0.2.0         # in a project's own tools
+```
+
 Add parts to a KiCad project's library, from the project's folder:
 
 ```sh
@@ -32,7 +40,17 @@ manufacturer, datasheet and description:
 
 Running it again changes nothing; `--force` replaces a symbol that was edited, and a footprint or STEP that was edited unless another symbol uses it.
 
-Price a board's assembly from its KiCad BOM:
+Price a board's assembly from its schematic:
+
+```sh
+uvx --from . jlcpick bom board.kicad_sch --pcb board.kicad_pcb --qty 5
+```
+
+`bom` exports the BOM of the root `.kicad_sch` with KiCad's `kicad-cli`, reading the code from
+every symbol field named like `LCSC`, `LCSC Part #` or `SUPPLIER PART` that holds one, the same
+fields `fab` reads. It finds `kicad-cli` on PATH, then where KiCad 10 installs it on macOS and
+Windows, then in KiCad's Flatpak (`flatpak run --command=kicad-cli org.kicad.KiCad`, which only
+sees files under your home); `--kicad-cli PATH` names another. A BOM exported by hand works too:
 
 ```sh
 kicad-cli sch export bom board.kicad_sch -o bom.csv --ref-range-delimiter '' \
@@ -41,7 +59,7 @@ kicad-cli sch export bom board.kicad_sch -o bom.csv --ref-range-delimiter '' \
 uvx --from . jlcpick bom bom.csv --pcb board.kicad_pcb --qty 5
 ```
 
-`LCSC` is the symbol field holding the code; use your field's name in `--fields`. The report
+There `LCSC` is the symbol field holding the code; use your field's name in `--fields`. The report
 lists parts, fees (setup, stencil, extended-part feeder, X-ray of leadless parts, joints) and every part that
 is not basic,
 with the units JLC charges after attrition and minimums, then the safe swaps: basic or preferred
@@ -58,8 +76,10 @@ every report prints that date.
 Quote the whole order, bare boards plus assembly:
 
 ```sh
-uvx --from . jlcpick quote bom.csv --pcb board.kicad_pcb --qty 5
+uvx --from . jlcpick quote board.kicad_sch --pcb board.kicad_pcb --qty 5
 ```
+
+`quote` takes the schematic or an exported BOM, as `bom` does.
 
 The boards are priced live by JLC's own order calculator, with the size, copper layers and
 thickness read from the `.kicad_pcb` (thickness rounded to JLC's nearest option) and JLC's
@@ -100,6 +120,47 @@ Footprints are converted from EasyEDA and are drafts: review them before use. Ea
 cached in `.jlcpick/cache/`; prices, stock and tier are always fetched live. EasyEDA blocks a
 client for about 10 minutes after ~25 requests a minute, so jlcpick waits 3 s between requests to
 easyeda.com and 2 s to other sites.
+
+## KiCad plugin
+
+The same commands from KiCad 10's PCB editor, as four toolbar buttons that run jlcpick on the open
+board and show its report in a window:
+
+- **Audit BOM cost**: `bom` on the board's schematic, exported with KiCad's own `kicad-cli`, with
+  the board for joints and sides;
+- **Quote JLCPCB order**: `quote` on the same schematic and board;
+- **Add part by LCSC code**: `add` the codes typed, in the project's folder;
+- **Write JLCPCB files**: `fab` into the project's `jlcpcb` folder.
+
+Audit, Quote and Write save the board first, so they read what the editor shows; when KiCad cannot
+save it, they say so and stop. Save the schematic yourself: the plugin reaches only the PCB editor.
+
+To install it:
+
+1. In KiCad, Preferences → Plugins: check "Enable KiCad API".
+2. Either run `python kicad-plugin/pack.py` and install the `jlcpick-kicad.zip` it writes with
+   Plugin and Content Manager → Install from File…, or copy `kicad-plugin/plugins` into KiCad's
+   plugins folder as `jlcpick`: `~/.local/share/kicad/10.0/plugins` on Linux
+   (`~/.var/app/org.kicad.KiCad/data/kicad/10.0/plugins` with Flatpak),
+   `Documents\KiCad\10.0\plugins` on Windows, `~/Documents/KiCad/10.0/plugins` on macOS.
+3. Restart KiCad. It makes a Python environment for the plugin and installs into it the jlcpick
+   release the plugin names, tag `v0.2.0` from GitHub (with `git`, a minute or two); the buttons
+   appear when that is done. That first start needs the network, and the tag must be published:
+   until it is, KiCad never marks the plugin ready.
+
+To update, the release gets a new `version` in `pyproject.toml` and `kicad-plugin/metadata.json`,
+the same tag in `kicad-plugin/plugins/requirements.txt`, and that tag on GitHub; install the new
+plugin. If the buttons still run the old jlcpick, Preferences → Plugins → Recreate Plugin
+Environment. Once jlcpick is on PyPI, the requirement becomes `jlcpick==X.Y.Z` and needs no `git`.
+
+On Linux KiCad runs the plugin with the first `python3` on PATH. With pyenv, conda or uv's Python
+first, point Preferences → Plugins → Python interpreter at the system's Python, the one that
+imports `wx` and `pcbnew` (`/usr/bin/python3`).
+
+The plugin shows its reports with wxPython, which KiCad's Python has on Windows, macOS and
+Flatpak; on Debian and Ubuntu install `python3-wxgtk4.0`. KiCad installs only wheels and some of
+KiKit's dependencies have none, so the first Write JLCPCB files installs KiKit into the plugin's
+environment itself; it then uses KiCad's own `pcbnew`. Cancel stops jlcpick and what it started.
 
 ## For agents
 
